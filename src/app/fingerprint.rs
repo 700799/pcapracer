@@ -89,7 +89,10 @@ pub fn ja3(ch: &ClientHelloInfo) -> (String, String) {
     let exts = dash_join_u16(&ch.extensions, true);
     let curves = dash_join_u16(&ch.groups, true);
     let pf = dash_join_u8(&ch.ec_point_formats);
-    let raw = format!("{},{},{},{},{}", ch.legacy_version, ciphers, exts, curves, pf);
+    let raw = format!(
+        "{},{},{},{},{}",
+        ch.legacy_version, ciphers, exts, curves, pf
+    );
     (md5_hex(&raw), raw)
 }
 
@@ -142,8 +145,18 @@ fn ja4_hash_list(mut vals: Vec<String>) -> String {
 pub fn ja4(ch: &ClientHelloInfo) -> String {
     let ver = ja4_version(ch);
     let sni = if ch.sni.is_some() { 'd' } else { 'i' };
-    let n_ciphers = ch.ciphers.iter().filter(|&&v| !is_grease(v)).count().min(99);
-    let n_exts = ch.extensions.iter().filter(|&&v| !is_grease(v)).count().min(99);
+    let n_ciphers = ch
+        .ciphers
+        .iter()
+        .filter(|&&v| !is_grease(v))
+        .count()
+        .min(99);
+    let n_exts = ch
+        .extensions
+        .iter()
+        .filter(|&&v| !is_grease(v))
+        .count()
+        .min(99);
     let alpn = ja4_alpn(ch);
     let a = format!("t{ver}{sni}{n_ciphers:02}{n_exts:02}{alpn}");
 

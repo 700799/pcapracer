@@ -117,7 +117,6 @@ mod tests {
             active_threshold: 1.0,
             max_flows: 1000,
             app_buffer_bytes: 8192,
-            app_buffer_budget: 1 << 26,
             hex_prefix_len: 0,
             threads: 1,
             batch_size: 128,

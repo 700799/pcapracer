@@ -3,6 +3,7 @@
 use super::AppCtx;
 use crate::schema::http::HttpRow;
 
+#[allow(clippy::large_enum_variant)]
 pub enum HttpOutcome {
     Row(HttpRow),
     NeedMore,
@@ -14,7 +15,14 @@ const MAX_HEADERS: usize = 64;
 /// True if the buffer plausibly begins an HTTP/1.x request line.
 pub fn looks_like_request(buf: &[u8]) -> bool {
     const METHODS: [&[u8]; 9] = [
-        b"GET ", b"POST ", b"PUT ", b"HEAD ", b"DELETE ", b"OPTIONS ", b"PATCH ", b"TRACE ",
+        b"GET ",
+        b"POST ",
+        b"PUT ",
+        b"HEAD ",
+        b"DELETE ",
+        b"OPTIONS ",
+        b"PATCH ",
+        b"TRACE ",
         b"CONNECT ",
     ];
     METHODS.iter().any(|m| buf.starts_with(m))
@@ -47,8 +55,8 @@ pub fn parse_request(buf: &[u8], ctx: &AppCtx) -> HttpOutcome {
     match req.parse(buf) {
         Ok(httparse::Status::Complete(n)) => {
             let hdrs = &req.headers[..];
-            let content_length = header_value(hdrs, "content-length")
-                .and_then(|s| s.trim().parse::<i64>().ok());
+            let content_length =
+                header_value(hdrs, "content-length").and_then(|s| s.trim().parse::<i64>().ok());
             let row = HttpRow {
                 ts_ns: ctx.ts_ns,
                 src_ip: Some(ctx.src_ip),
@@ -85,8 +93,8 @@ pub fn parse_response(buf: &[u8], ctx: &AppCtx) -> HttpOutcome {
     match res.parse(buf) {
         Ok(httparse::Status::Complete(n)) => {
             let hdrs = &res.headers[..];
-            let content_length = header_value(hdrs, "content-length")
-                .and_then(|s| s.trim().parse::<i64>().ok());
+            let content_length =
+                header_value(hdrs, "content-length").and_then(|s| s.trim().parse::<i64>().ok());
             let row = HttpRow {
                 ts_ns: ctx.ts_ns,
                 src_ip: Some(ctx.src_ip),
@@ -131,7 +139,6 @@ mod tests {
             dst_ip: IpRepr::V4([5, 6, 7, 8]),
             src_port: 40000,
             dst_port: 80,
-            proto: 6,
         }
     }
 

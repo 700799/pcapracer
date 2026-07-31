@@ -107,9 +107,9 @@ pub fn decode_ipv6(frame: &[u8], off: usize, cfg: &Config, meta: &mut PacketMeta
         let this = next_header;
         next_header = eh[0];
         let ext_len = match this {
-            44 => 8usize,                      // fragment header: fixed 8 bytes
-            51 => (eh[1] as usize + 2) * 4,    // AH: (len+2)*4
-            _ => (eh[1] as usize + 1) * 8,     // hop-by-hop/routing/dest/mobility
+            44 => 8usize,                   // fragment header: fixed 8 bytes
+            51 => (eh[1] as usize + 2) * 4, // AH: (len+2)*4
+            _ => (eh[1] as usize + 1) * 8,  // hop-by-hop/routing/dest/mobility
         };
         if this == 44 {
             is_frag = true;

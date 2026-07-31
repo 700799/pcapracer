@@ -176,11 +176,6 @@ impl PacketMeta {
     pub fn reset(&mut self) {
         *self = PacketMeta::default();
     }
-
-    /// True if a routable L3 endpoint pair was decoded.
-    pub fn has_ip(&self) -> bool {
-        self.src_ip.is_some() && self.dst_ip.is_some()
-    }
 }
 
 /// Decode a single frame into `meta`. Never panics.
@@ -190,7 +185,13 @@ pub fn decode_packet(frame: &[u8], linktype: u16, cfg: &Config, meta: &mut Packe
 }
 
 /// Compute payload statistics for the transport payload region.
-pub(crate) fn payload_stats(frame: &[u8], off: usize, len: usize, cfg: &Config, meta: &mut PacketMeta) {
+pub(crate) fn payload_stats(
+    frame: &[u8],
+    off: usize,
+    len: usize,
+    cfg: &Config,
+    meta: &mut PacketMeta,
+) {
     meta.l4_payload = Some((off, len));
     meta.payload_len = Some(len as u32);
     if let Some(p) = frame.get(off..off + len) {

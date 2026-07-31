@@ -32,9 +32,7 @@ impl From<Error> for PyErr {
             Error::Io(io) => PyIOError::new_err(io.to_string()),
             Error::Invalid(m) => PyValueError::new_err(m),
             Error::Unsupported(m) => PyValueError::new_err(m),
-            Error::Interrupted => {
-                pyo3::exceptions::PyKeyboardInterrupt::new_err("interrupted")
-            }
+            Error::Interrupted => pyo3::exceptions::PyKeyboardInterrupt::new_err("interrupted"),
             other => PyRuntimeError::new_err(other.to_string()),
         }
     }

@@ -210,7 +210,6 @@ mod tests {
             active_threshold: 1.0,
             max_flows: 1000,
             app_buffer_bytes: 8192,
-            app_buffer_budget: 1 << 26,
             hex_prefix_len: 0,
             threads: 1,
             batch_size: 128,
@@ -260,9 +259,12 @@ mod tests {
 
     #[test]
     fn arp_request() {
-        let mut f = vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 6, 7, 8, 9, 10, 11, 0x08, 0x06];
+        let mut f = vec![
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 6, 7, 8, 9, 10, 11, 0x08, 0x06,
+        ];
         let arp = [
-            0x00, 0x01, 0x08, 0x00, 6, 4, 0x00, 0x01, // htype eth, ptype ipv4, hlen plen, op req
+            0x00, 0x01, 0x08, 0x00, 6, 4, 0x00,
+            0x01, // htype eth, ptype ipv4, hlen plen, op req
             6, 7, 8, 9, 10, 11, 192, 168, 0, 1, // sender
             0, 0, 0, 0, 0, 0, 192, 168, 0, 2, // target
         ];

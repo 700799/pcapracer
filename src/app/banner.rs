@@ -43,7 +43,11 @@ fn first_line(buf: &[u8]) -> String {
     let slice = &buf[..end.min(256)];
     let mut s = String::with_capacity(slice.len());
     for &b in slice {
-        s.push(if (0x20..=0x7e).contains(&b) { b as char } else { '.' });
+        s.push(if (0x20..=0x7e).contains(&b) {
+            b as char
+        } else {
+            '.'
+        });
     }
     s
 }

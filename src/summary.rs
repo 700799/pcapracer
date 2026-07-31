@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 pub struct RunSummary {
     pub packets: u64,
     pub decode_errors: u64,
-    pub bytes_read: u64,
     pub table_rows: BTreeMap<&'static str, u64>,
     pub table_paths: BTreeMap<&'static str, String>,
     pub elapsed_s: f64,

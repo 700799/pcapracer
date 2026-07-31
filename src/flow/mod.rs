@@ -29,15 +29,6 @@ impl AppConfig {
     pub fn any(&self) -> bool {
         self.tls || self.http || self.enrich
     }
-
-    pub fn disabled() -> AppConfig {
-        AppConfig {
-            tls: false,
-            http: false,
-            enrich: false,
-            buffer_bytes: 8192,
-        }
-    }
 }
 
 /// Rows produced by TCP application parsing during one packet.
@@ -48,22 +39,12 @@ pub struct AppProduced {
 }
 
 /// Per-direction in-order reassembly buffer used during app detection.
+#[derive(Default)]
 struct DirBuf {
     buf: Vec<u8>,
     next_seq: Option<u32>,
     resolved: bool,
     at_cap: bool,
-}
-
-impl Default for DirBuf {
-    fn default() -> DirBuf {
-        DirBuf {
-            buf: Vec::new(),
-            next_seq: None,
-            resolved: false,
-            at_cap: false,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -263,7 +244,6 @@ impl FlowState {
                 dst_ip: ev.dst_ip,
                 src_port: ev.src_port,
                 dst_port: ev.dst_port,
-                proto: ev.proto,
             });
         }
         if dir.resolved {
@@ -325,7 +305,10 @@ impl FlowState {
                 self.fwd_pwp += 1;
             }
             self.len_fwd.push(wire);
-            self.fwd_seg_min = Some(self.fwd_seg_min.map_or(ev.payload_len, |m| m.min(ev.payload_len)));
+            self.fwd_seg_min = Some(
+                self.fwd_seg_min
+                    .map_or(ev.payload_len, |m| m.min(ev.payload_len)),
+            );
             if let Some(lt) = self.last_ts_fwd {
                 let d = (ts - lt) as f64 / 1e9;
                 self.iat_fwd.push(d);
@@ -425,7 +408,13 @@ impl FlowState {
         let total_pkts = self.fwd_pkts + self.bwd_pkts;
         let total_bytes = self.fwd_bytes + self.bwd_bytes;
         let duration_s = (self.last_ts - self.first_ts) as f64 / 1e9;
-        let rate = |x: f64| if duration_s > 0.0 { x / duration_s } else { 0.0 };
+        let rate = |x: f64| {
+            if duration_s > 0.0 {
+                x / duration_s
+            } else {
+                0.0
+            }
+        };
 
         let reason = if self.rst_seen {
             EndReason::Rst
@@ -459,12 +448,26 @@ impl FlowState {
         let dns_qnames = if e.dns_qnames.is_empty() {
             None
         } else {
-            Some(e.dns_qnames.iter().take(10).cloned().collect::<Vec<_>>().join(";"))
+            Some(
+                e.dns_qnames
+                    .iter()
+                    .take(10)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(";"),
+            )
         };
         let http_hosts = if e.http_hosts.is_empty() {
             None
         } else {
-            Some(e.http_hosts.iter().take(5).cloned().collect::<Vec<_>>().join(";"))
+            Some(
+                e.http_hosts
+                    .iter()
+                    .take(5)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(";"),
+            )
         };
 
         FlowRow {
@@ -843,11 +846,6 @@ impl FlowEngine {
                 self.closed.push(st.finalize(id, &k, EndReason::Idle));
             }
         }
-    }
-
-    /// Access the state of an in-progress flow (used by app enrichment in M5).
-    pub fn state_mut(&mut self, key: &FlowKey) -> Option<&mut FlowEnrich> {
-        self.flows.get_mut(key).map(|s| &mut s.enrich)
     }
 
     pub fn finish(&mut self) {

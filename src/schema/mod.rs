@@ -6,8 +6,8 @@ pub mod http;
 pub mod packets;
 pub mod tls;
 
-use arrow_array::builder::StringBuilder;
 use crate::util::{write_ipv4, write_mac, IpRepr};
+use arrow_array::builder::StringBuilder;
 
 /// Append an optional MAC address as a formatted string.
 #[inline]

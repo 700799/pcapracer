@@ -114,7 +114,10 @@ mod tests {
     #[test]
     fn ipv6_fmt() {
         let mut s = String::new();
-        write_ipv6(&mut s, [0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        write_ipv6(
+            &mut s,
+            [0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        );
         assert_eq!(s, "2001:db8::1");
     }
 

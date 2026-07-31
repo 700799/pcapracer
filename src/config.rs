@@ -27,9 +27,8 @@ impl Compression {
             Compression::Uncompressed => PC::UNCOMPRESSED,
             Compression::Snappy => PC::SNAPPY,
             Compression::Zstd(l) => {
-                let lvl = ZstdLevel::try_new(l.clamp(1, 22)).unwrap_or_else(|_| {
-                    ZstdLevel::try_new(3).expect("zstd level 3 is valid")
-                });
+                let lvl = ZstdLevel::try_new(l.clamp(1, 22))
+                    .unwrap_or_else(|_| ZstdLevel::try_new(3).expect("zstd level 3 is valid"));
                 PC::ZSTD(lvl)
             }
         }
@@ -93,7 +92,6 @@ pub struct Config {
     pub active_threshold: f64,
     pub max_flows: usize,
     pub app_buffer_bytes: usize,
-    pub app_buffer_budget: usize,
     pub hex_prefix_len: usize,
     pub threads: usize,
     pub batch_size: usize,

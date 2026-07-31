@@ -230,7 +230,6 @@ mod tests {
             active_threshold: 1.0,
             max_flows: 1000,
             app_buffer_bytes: 8192,
-            app_buffer_budget: 1 << 26,
             hex_prefix_len: 0,
             threads: 1,
             batch_size: 128,
@@ -256,7 +255,7 @@ mod tests {
         seg.extend_from_slice(&[3, 3, 7]); // wscale 7
         seg.extend_from_slice(&[8, 10, 0, 0, 0, 1, 0, 0, 0, 2]); // timestamps
         seg.push(0); // eol
-        // pad to 40 bytes header
+                     // pad to 40 bytes header
         while seg.len() < 40 {
             seg.push(1);
         }

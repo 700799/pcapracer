@@ -384,20 +384,6 @@ impl PacketsBuilder {
         }
     }
 
-    pub fn schema(&self) -> Arc<Schema> {
-        Arc::clone(&self.schema)
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.n
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.n == 0
-    }
-
     pub fn append(&mut self, pkt_id: u64, rec: &RecMeta, m: &PacketMeta) {
         self.n += 1;
         self.pkt_id.append_value(pkt_id);
@@ -418,14 +404,21 @@ impl PacketsBuilder {
 
         self.arp_op.append_option(m.arp_op);
         self.arp_hw_type.append_option(m.arp_hw_type);
-        push_mac(&mut self.arp_sender_mac, &mut self.scratch, m.arp_sender_mac);
+        push_mac(
+            &mut self.arp_sender_mac,
+            &mut self.scratch,
+            m.arp_sender_mac,
+        );
         push_ipv4(&mut self.arp_sender_ip, &mut self.scratch, m.arp_sender_ip);
-        push_mac(&mut self.arp_target_mac, &mut self.scratch, m.arp_target_mac);
+        push_mac(
+            &mut self.arp_target_mac,
+            &mut self.scratch,
+            m.arp_target_mac,
+        );
         push_ipv4(&mut self.arp_target_ip, &mut self.scratch, m.arp_target_ip);
 
         self.tunnel_depth.append_value(m.tunnel_depth);
-        self.tunnel_stack
-            .append_option(m.tunnel_stack.as_deref());
+        self.tunnel_stack.append_option(m.tunnel_stack.as_deref());
         self.vxlan_vni.append_option(m.vxlan_vni);
         self.gre_protocol.append_option(m.gre_protocol);
         push_ip(&mut self.outer_src_ip, &mut self.scratch, m.outer_src_ip);
@@ -517,7 +510,8 @@ impl PacketsBuilder {
         self.sctp_chunk_type.append_option(m.sctp_chunk_type);
         self.igmp_type.append_option(m.igmp_type);
         self.snmp_version.append_option(m.snmp_version);
-        self.snmp_community.append_option(m.snmp_community.as_deref());
+        self.snmp_community
+            .append_option(m.snmp_community.as_deref());
         self.modbus_function.append_option(m.modbus_function);
         self.modbus_unit_id.append_option(m.modbus_unit_id);
         self.sip_method.append_option(m.sip_method.as_deref());

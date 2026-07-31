@@ -67,7 +67,11 @@ fn snmp(payload: &[u8], meta: &mut PacketMeta) -> bool {
                 let community = &payload[cstart..cstart + clen];
                 let mut s = String::with_capacity(clen);
                 for &b in community {
-                    s.push(if (0x20..=0x7e).contains(&b) { b as char } else { '.' });
+                    s.push(if (0x20..=0x7e).contains(&b) {
+                        b as char
+                    } else {
+                        '.'
+                    });
                 }
                 meta.snmp_community = Some(s);
             }
@@ -134,7 +138,14 @@ fn syslog(payload: &[u8], meta: &mut PacketMeta) -> bool {
 
 fn sip(payload: &[u8], meta: &mut PacketMeta) -> bool {
     const METHODS: [&[u8]; 8] = [
-        b"INVITE ", b"ACK ", b"BYE ", b"CANCEL ", b"REGISTER ", b"OPTIONS ", b"INFO ", b"SIP/",
+        b"INVITE ",
+        b"ACK ",
+        b"BYE ",
+        b"CANCEL ",
+        b"REGISTER ",
+        b"OPTIONS ",
+        b"INFO ",
+        b"SIP/",
     ];
     if !METHODS.iter().any(|m| payload.starts_with(m)) {
         return false;
@@ -186,6 +197,7 @@ fn smb(payload: &[u8], meta: &mut PacketMeta) {
 mod tests {
     use super::*;
 
+    #[allow(clippy::field_reassign_with_default)]
     fn meta_ports(sp: u16, dp: u16) -> PacketMeta {
         let mut m = PacketMeta::default();
         m.src_port = Some(sp);

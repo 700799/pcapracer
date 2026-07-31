@@ -92,7 +92,6 @@ fn extract_one(
         active_threshold,
         max_flows: max_flows.max(1),
         app_buffer_bytes,
-        app_buffer_budget: 64 << 20,
         hex_prefix_len,
         threads,
         batch_size: batch_size.clamp(1, 1 << 20),

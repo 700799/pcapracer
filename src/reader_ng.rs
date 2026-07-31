@@ -103,10 +103,7 @@ impl PcapngState {
             }
             let body_start = *pos + 8;
             let body_end = *pos + total - 4;
-            let body = match bytes.get(body_start..body_end) {
-                Some(b) => b,
-                None => return None,
-            };
+            let body = bytes.get(body_start..body_end)?;
 
             match btype {
                 BT_IDB => {

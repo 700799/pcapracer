@@ -163,10 +163,6 @@ impl DnsBuilder {
         }
     }
 
-    pub fn schema(&self) -> Arc<Schema> {
-        Arc::clone(&self.schema)
-    }
-
     #[inline]
     pub fn len(&self) -> usize {
         self.n

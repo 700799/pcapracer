@@ -27,7 +27,6 @@ pub struct AppCtx {
     pub dst_ip: IpRepr,
     pub src_port: u16,
     pub dst_port: u16,
-    pub proto: u8,
 }
 
 /// Output of UDP application parsing for one datagram.

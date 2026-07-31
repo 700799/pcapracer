@@ -165,7 +165,12 @@ impl Collector {
             buffer_bytes: cfg.app_buffer_bytes,
         };
         Ok(Collector {
-            packets_sink: mk(cfg.tables.packets, "packets", packets::schema(), PACKETS_ROW_GROUP)?,
+            packets_sink: mk(
+                cfg.tables.packets,
+                "packets",
+                packets::schema(),
+                PACKETS_ROW_GROUP,
+            )?,
             dns_sink: mk(cfg.tables.dns, "dns", dns::schema(), NARROW_ROW_GROUP)?,
             tls_sink: mk(cfg.tables.tls, "tls", tls::schema(), NARROW_ROW_GROUP)?,
             http_sink: mk(cfg.tables.http, "http", http::schema(), NARROW_ROW_GROUP)?,
@@ -174,7 +179,12 @@ impl Collector {
             tbuilder: TlsBuilder::new(),
             hbuilder: HttpBuilder::new(),
             fbuilder: FlowsBuilder::new(),
-            engine: FlowEngine::new(cfg.idle_timeout, cfg.active_threshold, cfg.max_flows, appcfg),
+            engine: FlowEngine::new(
+                cfg.idle_timeout,
+                cfg.active_threshold,
+                cfg.max_flows,
+                appcfg,
+            ),
             summary: RunSummary::new(&cfg.tables),
             batch_size: cfg.batch_size,
         })
@@ -326,7 +336,11 @@ fn run_serial(cfg: Config, should_abort: impl Fn() -> bool) -> Result<RunSummary
     Ok(summary)
 }
 
-fn run_parallel(cfg: Config, threads: usize, should_abort: impl Fn() -> bool) -> Result<RunSummary> {
+fn run_parallel(
+    cfg: Config,
+    threads: usize,
+    should_abort: impl Fn() -> bool,
+) -> Result<RunSummary> {
     let start = Instant::now();
     let reader = Reader::open(&cfg)?;
     let mut collector = Collector::new(&cfg)?;

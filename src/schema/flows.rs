@@ -324,10 +324,6 @@ impl FlowsBuilder {
         }
     }
 
-    pub fn schema(&self) -> Arc<Schema> {
-        Arc::clone(&self.schema)
-    }
-
     #[inline]
     pub fn len(&self) -> usize {
         self.n
@@ -362,8 +358,10 @@ impl FlowsBuilder {
         self.bwd_payload_bytes.append_value(r.bwd_payload_bytes);
         self.fwd_header_bytes.append_value(r.fwd_header_bytes);
         self.bwd_header_bytes.append_value(r.bwd_header_bytes);
-        self.fwd_pkts_with_payload.append_value(r.fwd_pkts_with_payload);
-        self.bwd_pkts_with_payload.append_value(r.bwd_pkts_with_payload);
+        self.fwd_pkts_with_payload
+            .append_value(r.fwd_pkts_with_payload);
+        self.bwd_pkts_with_payload
+            .append_value(r.bwd_pkts_with_payload);
 
         self.pkt_len_min.append_option(r.pkt_len_min);
         self.pkt_len_max.append_option(r.pkt_len_max);

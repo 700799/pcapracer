@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 
 const MAX_HS_BYTES: usize = 65_536;
 
+#[allow(clippy::large_enum_variant)]
 pub enum TlsOutcome {
     Rows(Vec<TlsRow>),
     NeedMore,
@@ -64,7 +65,8 @@ pub fn parse_stream(buf: &[u8], ctx: &AppCtx) -> TlsOutcome {
     let mut parsed_any = false;
     while hp + 4 <= hs.len() {
         let msg_type = hs[hp];
-        let mlen = ((hs[hp + 1] as usize) << 16) | ((hs[hp + 2] as usize) << 8) | hs[hp + 3] as usize;
+        let mlen =
+            ((hs[hp + 1] as usize) << 16) | ((hs[hp + 2] as usize) << 8) | hs[hp + 3] as usize;
         let mstart = hp + 4;
         let mend = mstart + mlen;
         if mend > hs.len() {
@@ -105,7 +107,8 @@ pub fn parse_stream(buf: &[u8], ctx: &AppCtx) -> TlsOutcome {
 }
 
 fn read_u16(b: &[u8], off: usize) -> Option<u16> {
-    b.get(off..off + 2).map(|s| u16::from_be_bytes([s[0], s[1]]))
+    b.get(off..off + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]))
 }
 
 fn dash_u16(vals: &[u16]) -> String {
@@ -131,9 +134,11 @@ fn dash_u8(vals: &[u8]) -> String {
 }
 
 fn parse_client_hello(body: &[u8], record_version: Option<u16>, ctx: &AppCtx) -> Option<TlsRow> {
-    let mut ch = ClientHelloInfo::default();
     // version(2) + random(32)
-    ch.legacy_version = read_u16(body, 0)?;
+    let mut ch = ClientHelloInfo {
+        legacy_version: read_u16(body, 0)?,
+        ..Default::default()
+    };
     let mut p = 2 + 32;
     // session id
     let sid_len = *body.get(p)? as usize;
@@ -183,7 +188,12 @@ fn parse_client_hello(body: &[u8], record_version: Option<u16>, ctx: &AppCtx) ->
         version_max,
         sni: ch.sni.clone(),
         alpn,
-        cipher_count: Some(ch.ciphers.iter().filter(|&&v| !fingerprint::is_grease(v)).count() as u16),
+        cipher_count: Some(
+            ch.ciphers
+                .iter()
+                .filter(|&&v| !fingerprint::is_grease(v))
+                .count() as u16,
+        ),
         ciphers: Some(dash_u16(&ch.ciphers)),
         extensions: Some(dash_u16(&ch.extensions)),
         groups: Some(dash_u16(&ch.groups)),
@@ -266,7 +276,8 @@ fn parse_extensions(data: &[u8], ch: &mut ClientHelloInfo) {
                     let l = ed[0] as usize;
                     let mut q = 1usize;
                     while q + 2 <= (1 + l).min(ed.len()) {
-                        ch.supported_versions.push(u16::from_be_bytes([ed[q], ed[q + 1]]));
+                        ch.supported_versions
+                            .push(u16::from_be_bytes([ed[q], ed[q + 1]]));
                         q += 2;
                     }
                 }
@@ -278,8 +289,10 @@ fn parse_extensions(data: &[u8], ch: &mut ClientHelloInfo) {
 }
 
 fn parse_server_hello(body: &[u8], record_version: Option<u16>, ctx: &AppCtx) -> Option<TlsRow> {
-    let mut sh = ServerHelloInfo::default();
-    sh.version = read_u16(body, 0)?;
+    let mut sh = ServerHelloInfo {
+        version: read_u16(body, 0)?,
+        ..Default::default()
+    };
     let mut p = 2 + 32;
     let sid_len = *body.get(p)? as usize;
     p += 1 + sid_len;
@@ -443,7 +456,6 @@ mod tests {
             dst_ip: IpRepr::V4([5, 6, 7, 8]),
             src_port: 12345,
             dst_port: 443,
-            proto: 6,
         }
     }
 
@@ -463,7 +475,7 @@ mod tests {
         body.extend_from_slice(&[0, 4]); // cipher suites len
         body.extend_from_slice(&[0x13, 0x01, 0x13, 0x02]); // two ciphers
         body.extend_from_slice(&[1, 0]); // compression
-        // extensions
+                                         // extensions
         let mut ext = Vec::new();
         // SNI ext type 0
         let host = b"example.com";
@@ -479,7 +491,11 @@ mod tests {
         body.extend_from_slice(&ext);
 
         let mut hs = vec![1];
-        hs.extend_from_slice(&[(body.len() >> 16) as u8, (body.len() >> 8) as u8, body.len() as u8]);
+        hs.extend_from_slice(&[
+            (body.len() >> 16) as u8,
+            (body.len() >> 8) as u8,
+            body.len() as u8,
+        ]);
         hs.extend_from_slice(&body);
         hs
     }
@@ -504,13 +520,19 @@ mod tests {
         let rec = wrap_record(&client_hello());
         let split = rec.len() / 2;
         // First half is incomplete.
-        assert!(matches!(parse_stream(&rec[..split], &ctx()), TlsOutcome::NeedMore));
+        assert!(matches!(
+            parse_stream(&rec[..split], &ctx()),
+            TlsOutcome::NeedMore
+        ));
         // Whole record parses.
         assert!(matches!(parse_stream(&rec, &ctx()), TlsOutcome::Rows(_)));
     }
 
     #[test]
     fn non_tls_rejected() {
-        assert!(matches!(parse_stream(b"GET / HTTP/1.1\r\n", &ctx()), TlsOutcome::NotTls));
+        assert!(matches!(
+            parse_stream(b"GET / HTTP/1.1\r\n", &ctx()),
+            TlsOutcome::NotTls
+        ));
     }
 }

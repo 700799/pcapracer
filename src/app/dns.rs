@@ -11,7 +11,12 @@ const MAX_JUMPS: u32 = 16;
 
 /// Parse a DNS-family message. Fills inline `meta` summary fields and returns a
 /// full row for the `dns` table. Returns None if it isn't a plausible message.
-pub fn parse(payload: &[u8], service: &'static str, meta: &mut PacketMeta, ts_ns: i64) -> Option<DnsRow> {
+pub fn parse(
+    payload: &[u8],
+    service: &'static str,
+    meta: &mut PacketMeta,
+    ts_ns: i64,
+) -> Option<DnsRow> {
     if payload.len() < 12 {
         return None;
     }
@@ -144,7 +149,8 @@ pub fn parse(payload: &[u8], service: &'static str, meta: &mut PacketMeta, ts_ns
 
 #[inline]
 fn be16(b: &[u8], off: usize) -> Option<u16> {
-    b.get(off..off + 2).map(|s| u16::from_be_bytes([s[0], s[1]]))
+    b.get(off..off + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]))
 }
 
 #[inline]
@@ -185,7 +191,11 @@ fn read_name(msg: &[u8], start: usize) -> Option<(String, usize)> {
                 name.push('.');
             }
             for &b in label {
-                name.push(if (0x20..=0x7e).contains(&b) { b as char } else { '?' });
+                name.push(if (0x20..=0x7e).contains(&b) {
+                    b as char
+                } else {
+                    '?'
+                });
             }
             pos += 1 + l;
             if name.len() > 255 {
@@ -223,7 +233,9 @@ fn render_rdata(msg: &[u8], rtype: u16, start: usize, end: usize) -> String {
             // MX: preference (2) + exchange name
             if rd.len() >= 3 {
                 let pref = u16::from_be_bytes([rd[0], rd[1]]);
-                let name = read_name(msg, start + 2).map(|(n, _)| n).unwrap_or_default();
+                let name = read_name(msg, start + 2)
+                    .map(|(n, _)| n)
+                    .unwrap_or_default();
                 let _ = write!(s, "{pref} {name}");
             }
         }
@@ -239,7 +251,11 @@ fn render_rdata(msg: &[u8], rtype: u16, start: usize, end: usize) -> String {
                     s.push(' ');
                 }
                 for &b in &rd[i + 1..i + 1 + l] {
-                    s.push(if (0x20..=0x7e).contains(&b) { b as char } else { '.' });
+                    s.push(if (0x20..=0x7e).contains(&b) {
+                        b as char
+                    } else {
+                        '.'
+                    });
                 }
                 i += 1 + l;
             }
@@ -284,6 +300,7 @@ pub fn qtype_name(t: u16) -> &'static str {
 mod tests {
     use super::*;
 
+    #[allow(clippy::field_reassign_with_default)]
     fn meta() -> PacketMeta {
         let mut m = PacketMeta::default();
         m.src_ip = Some(crate::util::IpRepr::V4([1, 2, 3, 4]));
