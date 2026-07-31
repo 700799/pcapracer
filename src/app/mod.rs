@@ -4,13 +4,30 @@
 //! application parsing (M5) is driven by the flow engine over reassembled
 //! payloads.
 
+pub mod banner;
 pub mod dhcp;
 pub mod dns;
+pub mod fingerprint;
+pub mod http;
 pub mod ntp;
 pub mod quic;
+pub mod tls;
 
 use crate::decode::PacketMeta;
 use crate::schema::dns::DnsRow;
+use crate::util::IpRepr;
+
+/// Per-message context for building application-table rows (the sender's
+/// endpoint is `src`).
+#[derive(Clone, Copy, Debug)]
+pub struct AppCtx {
+    pub ts_ns: i64,
+    pub src_ip: IpRepr,
+    pub dst_ip: IpRepr,
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub proto: u8,
+}
 
 /// Output of UDP application parsing for one datagram.
 #[derive(Default)]

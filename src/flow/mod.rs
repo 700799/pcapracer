@@ -3,6 +3,10 @@
 pub mod key;
 pub mod stats;
 
+use crate::app::tls::TlsOutcome;
+use crate::app::{banner, http, tls, AppCtx};
+use crate::schema::http::HttpRow;
+use crate::schema::tls::TlsRow;
 use crate::util::IpRepr;
 use key::{proto_name, FlowEvent, FlowKey};
 use stats::{ActiveIdle, Welford};
@@ -10,6 +14,65 @@ use std::collections::{BTreeSet, HashMap};
 
 const SWEEP_INTERVAL_NS: i64 = 4_000_000_000; // sweep at most every 4s of capture time
 const TCP: u8 = 6;
+
+/// Which application parsing the flow engine should perform.
+#[derive(Clone, Copy, Debug)]
+pub struct AppConfig {
+    pub tls: bool,
+    pub http: bool,
+    /// Parse for flow enrichment even if the tls/http tables are disabled.
+    pub enrich: bool,
+    pub buffer_bytes: usize,
+}
+
+impl AppConfig {
+    pub fn any(&self) -> bool {
+        self.tls || self.http || self.enrich
+    }
+
+    pub fn disabled() -> AppConfig {
+        AppConfig {
+            tls: false,
+            http: false,
+            enrich: false,
+            buffer_bytes: 8192,
+        }
+    }
+}
+
+/// Rows produced by TCP application parsing during one packet.
+#[derive(Default)]
+pub struct AppProduced {
+    pub tls: Vec<TlsRow>,
+    pub http: Vec<HttpRow>,
+}
+
+/// Per-direction in-order reassembly buffer used during app detection.
+struct DirBuf {
+    buf: Vec<u8>,
+    next_seq: Option<u32>,
+    resolved: bool,
+    at_cap: bool,
+}
+
+impl Default for DirBuf {
+    fn default() -> DirBuf {
+        DirBuf {
+            buf: Vec::new(),
+            next_seq: None,
+            resolved: false,
+            at_cap: false,
+        }
+    }
+}
+
+#[derive(Default)]
+struct AppState {
+    fwd: DirBuf,
+    bwd: DirBuf,
+    fwd_ctx: Option<AppCtx>,
+    bwd_ctx: Option<AppCtx>,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum EndReason {
@@ -110,6 +173,7 @@ struct FlowState {
 
     ai: ActiveIdle,
     pub enrich: FlowEnrich,
+    app: Option<Box<AppState>>,
 }
 
 impl FlowState {
@@ -171,7 +235,73 @@ impl FlowState {
             rst_seen: false,
             ai: ActiveIdle::new(active_threshold),
             enrich: FlowEnrich::default(),
+            app: None,
         }
+    }
+
+    /// Feed a TCP packet's payload into the per-direction reassembly buffers and
+    /// attempt application parsing. Updates enrichment and returns any table rows.
+    fn feed_app(&mut self, ev: &FlowEvent, payload: &[u8], cfg: &AppConfig) -> AppProduced {
+        let mut out = AppProduced::default();
+        if payload.is_empty() {
+            return out;
+        }
+        if self.app.is_none() {
+            self.app = Some(Box::new(AppState::default()));
+        }
+        let fwd = ev.src_is_a == self.initiator_is_a;
+        let app = self.app.as_mut().unwrap();
+        let (dir, ctx_slot) = if fwd {
+            (&mut app.fwd, &mut app.fwd_ctx)
+        } else {
+            (&mut app.bwd, &mut app.bwd_ctx)
+        };
+        if ctx_slot.is_none() {
+            *ctx_slot = Some(AppCtx {
+                ts_ns: ev.ts_ns,
+                src_ip: ev.src_ip,
+                dst_ip: ev.dst_ip,
+                src_port: ev.src_port,
+                dst_port: ev.dst_port,
+                proto: ev.proto,
+            });
+        }
+        if dir.resolved {
+            return out;
+        }
+
+        // In-order (contiguous-seq-only) append; abandon on a forward gap.
+        match dir.next_seq {
+            None => {
+                dir.buf.extend_from_slice(payload);
+                let base = ev.tcp_seq.unwrap_or(0);
+                dir.next_seq = Some(base.wrapping_add(payload.len() as u32));
+            }
+            Some(ns) => {
+                let seq = ev.tcp_seq.unwrap_or(ns);
+                if seq == ns {
+                    dir.buf.extend_from_slice(payload);
+                    dir.next_seq = Some(ns.wrapping_add(payload.len() as u32));
+                } else {
+                    let ahead = seq.wrapping_sub(ns);
+                    if ahead < 0x8000_0000 {
+                        // Genuine gap ahead: give up in-order reassembly.
+                        dir.resolved = true;
+                        return out;
+                    }
+                    // Otherwise a retransmit/old segment: ignore it.
+                    return out;
+                }
+            }
+        }
+        if dir.buf.len() > cfg.buffer_bytes {
+            dir.buf.truncate(cfg.buffer_bytes);
+            dir.at_cap = true;
+        }
+
+        let ctx = ctx_slot.expect("ctx set above");
+        try_parse_dir(dir, &ctx, fwd, cfg, &mut out, &mut self.enrich);
+        out
     }
 
     fn account(&mut self, ev: &FlowEvent) {
@@ -457,6 +587,139 @@ impl FlowState {
     }
 }
 
+/// Parse the current direction buffer, updating enrichment and emitting rows.
+fn try_parse_dir(
+    dir: &mut DirBuf,
+    ctx: &AppCtx,
+    is_client: bool,
+    cfg: &AppConfig,
+    out: &mut AppProduced,
+    enrich: &mut FlowEnrich,
+) {
+    if dir.buf.is_empty() {
+        return;
+    }
+    // TLS handshake (either direction).
+    if dir.buf[0] == 0x16 {
+        match tls::parse_stream(&dir.buf, ctx) {
+            TlsOutcome::Rows(rows) => {
+                dir.resolved = true;
+                for r in &rows {
+                    enrich_from_tls(enrich, r);
+                }
+                if cfg.tls {
+                    out.tls.extend(rows);
+                }
+            }
+            TlsOutcome::NeedMore => {
+                if dir.at_cap {
+                    dir.resolved = true;
+                }
+            }
+            TlsOutcome::NotTls => dir.resolved = true,
+        }
+        return;
+    }
+    // HTTP request (client) / response (server).
+    if is_client && http::looks_like_request(&dir.buf) {
+        match http::parse_request(&dir.buf, ctx) {
+            http::HttpOutcome::Row(r) => {
+                dir.resolved = true;
+                enrich_from_http(enrich, &r);
+                if cfg.http {
+                    out.http.push(r);
+                }
+            }
+            http::HttpOutcome::NeedMore => {
+                if dir.at_cap {
+                    dir.resolved = true;
+                }
+            }
+            http::HttpOutcome::No => dir.resolved = true,
+        }
+        return;
+    }
+    if !is_client && http::looks_like_response(&dir.buf) {
+        match http::parse_response(&dir.buf, ctx) {
+            http::HttpOutcome::Row(r) => {
+                dir.resolved = true;
+                enrich_from_http(enrich, &r);
+                if cfg.http {
+                    out.http.push(r);
+                }
+            }
+            http::HttpOutcome::NeedMore => {
+                if dir.at_cap {
+                    dir.resolved = true;
+                }
+            }
+            http::HttpOutcome::No => dir.resolved = true,
+        }
+        return;
+    }
+    // Server text-protocol banner (SSH/FTP/SMTP/POP3/IMAP).
+    if let Some((proto, line)) = banner::parse(&dir.buf, ctx.src_port, ctx.dst_port) {
+        dir.resolved = true;
+        enrich.app_protos.insert(proto);
+        if is_client {
+            enrich.client_banner.get_or_insert(line);
+        } else {
+            enrich.server_banner.get_or_insert(line);
+        }
+        return;
+    }
+    // Unknown protocol: stop buffering once we've seen enough or hit the cap.
+    if dir.buf.len() >= 16 || dir.at_cap {
+        dir.resolved = true;
+    }
+}
+
+fn enrich_from_tls(en: &mut FlowEnrich, r: &TlsRow) {
+    en.app_protos.insert("tls");
+    match r.msg {
+        "client_hello" => {
+            if en.tls_sni.is_none() {
+                en.tls_sni = r.sni.clone();
+            }
+            if en.ja3.is_none() {
+                en.ja3 = r.ja3.clone();
+            }
+            if en.ja4.is_none() {
+                en.ja4 = r.ja4.clone();
+            }
+            if en.tls_version.is_none() {
+                en.tls_version = r.version_max.or(r.legacy_version);
+            }
+        }
+        "server_hello" => {
+            if en.ja3s.is_none() {
+                en.ja3s = r.ja3s.clone();
+            }
+            if let Some(v) = r.version_max {
+                en.tls_version = Some(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn enrich_from_http(en: &mut FlowEnrich, r: &HttpRow) {
+    en.app_protos.insert("http");
+    if r.is_request {
+        if let Some(h) = &r.host {
+            if en.http_hosts.len() < 5 && !en.http_hosts.iter().any(|x| x == h) {
+                en.http_hosts.push(h.clone());
+            }
+        }
+        if let Some(m) = &r.method {
+            en.http_methods.insert(m.clone());
+        }
+        if en.http_user_agent.is_none() {
+            en.http_user_agent = r.user_agent.clone();
+        }
+    }
+}
+
 /// The flow engine: consumes ordered flow events and emits closed flow rows.
 pub struct FlowEngine {
     flows: HashMap<FlowKey, FlowState>,
@@ -466,11 +729,19 @@ pub struct FlowEngine {
     max_seen_ts: i64,
     last_sweep_ts: i64,
     next_id: u64,
+    appcfg: AppConfig,
     pub closed: Vec<FlowRow>,
+    pub tls_rows: Vec<TlsRow>,
+    pub http_rows: Vec<HttpRow>,
 }
 
 impl FlowEngine {
-    pub fn new(idle_timeout: f64, active_threshold: f64, max_flows: usize) -> FlowEngine {
+    pub fn new(
+        idle_timeout: f64,
+        active_threshold: f64,
+        max_flows: usize,
+        appcfg: AppConfig,
+    ) -> FlowEngine {
         FlowEngine {
             flows: HashMap::new(),
             active_threshold,
@@ -479,11 +750,14 @@ impl FlowEngine {
             max_seen_ts: i64::MIN,
             last_sweep_ts: i64::MIN,
             next_id: 0,
+            appcfg,
             closed: Vec::new(),
+            tls_rows: Vec::new(),
+            http_rows: Vec::new(),
         }
     }
 
-    pub fn on_event(&mut self, ev: &FlowEvent) {
+    pub fn on_event(&mut self, ev: &FlowEvent, payload: Option<&[u8]>) {
         if ev.ts_ns > self.max_seen_ts {
             self.max_seen_ts = ev.ts_ns;
         }
@@ -502,11 +776,22 @@ impl FlowEngine {
             }
         }
 
-        let st = self
-            .flows
-            .entry(ev.key)
-            .or_insert_with(|| FlowState::new(ev, self.active_threshold));
-        st.account(ev);
+        let cfg = self.appcfg;
+        let do_app = cfg.any() && ev.proto == TCP && payload.is_some();
+        let produced = {
+            let st = self
+                .flows
+                .entry(ev.key)
+                .or_insert_with(|| FlowState::new(ev, self.active_threshold));
+            st.account(ev);
+            if do_app {
+                st.feed_app(ev, payload.unwrap(), &cfg)
+            } else {
+                AppProduced::default()
+            }
+        };
+        self.tls_rows.extend(produced.tls);
+        self.http_rows.extend(produced.http);
 
         if self.max_seen_ts - self.last_sweep_ts >= SWEEP_INTERVAL_NS {
             self.sweep();

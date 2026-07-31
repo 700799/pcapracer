@@ -2,7 +2,9 @@
 
 pub mod dns;
 pub mod flows;
+pub mod http;
 pub mod packets;
+pub mod tls;
 
 use arrow_array::builder::StringBuilder;
 use crate::util::{write_ipv4, write_mac, IpRepr};
