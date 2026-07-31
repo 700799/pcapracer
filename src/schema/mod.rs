@@ -1,5 +1,6 @@
 //! Arrow schemas and column builders for each output table.
 
+pub mod dns;
 pub mod flows;
 pub mod packets;
 

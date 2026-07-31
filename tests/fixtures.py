@@ -223,6 +223,28 @@ def icmp_echo(*, req: bool = True, ident: int = 1, seq: int = 1, data: bytes = b
     return struct.pack(">BBHHH", typ, 0, 0, ident, seq) + data
 
 
+def dns_name(name: str) -> bytes:
+    out = b""
+    for label in name.split("."):
+        if label:
+            out += bytes([len(label)]) + label.encode()
+    return out + b"\x00"
+
+
+def dns_query(name: str = "example.com", *, qtype: int = 1, txid: int = 0x1234) -> bytes:
+    header = struct.pack(">HHHHHH", txid, 0x0100, 1, 0, 0, 0)  # RD set
+    return header + dns_name(name) + struct.pack(">HH", qtype, 1)
+
+
+def dns_response_a(name: str = "example.com", ip: str = "93.184.216.34", *, txid: int = 0x1234, ttl: int = 300) -> bytes:
+    header = struct.pack(">HHHHHH", txid, 0x8180, 1, 1, 0, 0)
+    q = dns_name(name) + struct.pack(">HH", 1, 1)
+    # answer uses a compression pointer back to the question name at offset 12
+    ans = struct.pack(">H", 0xC00C) + struct.pack(">HHIH", 1, 1, ttl, 4)
+    ans += bytes(int(x) for x in ip.split("."))
+    return header + q + ans
+
+
 def gre(inner: bytes, *, proto: int = 0x0800) -> bytes:
     return struct.pack(">HH", 0, proto) + inner
 

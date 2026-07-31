@@ -1,5 +1,6 @@
 //! pcapracer: fast PCAP/pcapng feature extraction to Parquet.
 
+mod app;
 mod config;
 mod decode;
 mod error;
