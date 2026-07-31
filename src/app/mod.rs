@@ -11,6 +11,7 @@ pub mod fingerprint;
 pub mod http;
 pub mod ntp;
 pub mod quic;
+pub mod tier2;
 pub mod tls;
 
 use crate::decode::PacketMeta;
@@ -61,6 +62,8 @@ pub fn parse_udp(payload: &[u8], meta: &mut PacketMeta, ts_ns: i64, want_dns: bo
         ntp::detect(payload, meta);
     } else if has(443) || has(80) {
         quic::detect(payload, meta);
+    } else {
+        tier2::parse_udp(payload, meta);
     }
     out
 }

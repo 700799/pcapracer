@@ -117,6 +117,19 @@ pub fn schema() -> Arc<Schema> {
         "quic_version": UInt32, true;
         "quic_dcid": Utf8, true;
         "banner": Utf8, true;
+        "sctp_verification_tag": UInt32, true;
+        "sctp_chunk_type": UInt8, true;
+        "igmp_type": UInt8, true;
+        "snmp_version": UInt8, true;
+        "snmp_community": Utf8, true;
+        "modbus_function": UInt8, true;
+        "modbus_unit_id": UInt8, true;
+        "sip_method": Utf8, true;
+        "sip_uri": Utf8, true;
+        "smb_dialect": Utf8, true;
+        "tftp_opcode": UInt8, true;
+        "syslog_severity": UInt8, true;
+        "syslog_facility": UInt8, true;
     ];
     Arc::new(Schema::new(f))
 }
@@ -233,6 +246,19 @@ pub struct PacketsBuilder {
     quic_version: UInt32Builder,
     quic_dcid: StringBuilder,
     banner: StringBuilder,
+    sctp_verification_tag: UInt32Builder,
+    sctp_chunk_type: UInt8Builder,
+    igmp_type: UInt8Builder,
+    snmp_version: UInt8Builder,
+    snmp_community: StringBuilder,
+    modbus_function: UInt8Builder,
+    modbus_unit_id: UInt8Builder,
+    sip_method: StringBuilder,
+    sip_uri: StringBuilder,
+    smb_dialect: StringBuilder,
+    tftp_opcode: UInt8Builder,
+    syslog_severity: UInt8Builder,
+    syslog_facility: UInt8Builder,
 }
 
 impl PacketsBuilder {
@@ -342,6 +368,19 @@ impl PacketsBuilder {
             quic_version: p!(),
             quic_dcid: StringBuilder::new(),
             banner: StringBuilder::new(),
+            sctp_verification_tag: p!(),
+            sctp_chunk_type: p!(),
+            igmp_type: p!(),
+            snmp_version: p!(),
+            snmp_community: StringBuilder::new(),
+            modbus_function: p!(),
+            modbus_unit_id: p!(),
+            sip_method: StringBuilder::new(),
+            sip_uri: StringBuilder::new(),
+            smb_dialect: StringBuilder::new(),
+            tftp_opcode: p!(),
+            syslog_severity: p!(),
+            syslog_facility: p!(),
         }
     }
 
@@ -473,6 +512,20 @@ impl PacketsBuilder {
         self.quic_version.append_option(m.quic_version);
         self.quic_dcid.append_option(m.quic_dcid.as_deref());
         self.banner.append_option(m.banner.as_deref());
+        self.sctp_verification_tag
+            .append_option(m.sctp_verification_tag);
+        self.sctp_chunk_type.append_option(m.sctp_chunk_type);
+        self.igmp_type.append_option(m.igmp_type);
+        self.snmp_version.append_option(m.snmp_version);
+        self.snmp_community.append_option(m.snmp_community.as_deref());
+        self.modbus_function.append_option(m.modbus_function);
+        self.modbus_unit_id.append_option(m.modbus_unit_id);
+        self.sip_method.append_option(m.sip_method.as_deref());
+        self.sip_uri.append_option(m.sip_uri.as_deref());
+        self.smb_dialect.append_option(m.smb_dialect);
+        self.tftp_opcode.append_option(m.tftp_opcode);
+        self.syslog_severity.append_option(m.syslog_severity);
+        self.syslog_facility.append_option(m.syslog_facility);
     }
 
     pub fn finish(&mut self) -> Result<RecordBatch, arrow_schema::ArrowError> {
@@ -574,6 +627,19 @@ impl PacketsBuilder {
             Arc::new(self.quic_version.finish()),
             Arc::new(self.quic_dcid.finish()),
             Arc::new(self.banner.finish()),
+            Arc::new(self.sctp_verification_tag.finish()),
+            Arc::new(self.sctp_chunk_type.finish()),
+            Arc::new(self.igmp_type.finish()),
+            Arc::new(self.snmp_version.finish()),
+            Arc::new(self.snmp_community.finish()),
+            Arc::new(self.modbus_function.finish()),
+            Arc::new(self.modbus_unit_id.finish()),
+            Arc::new(self.sip_method.finish()),
+            Arc::new(self.sip_uri.finish()),
+            Arc::new(self.smb_dialect.finish()),
+            Arc::new(self.tftp_opcode.finish()),
+            Arc::new(self.syslog_severity.finish()),
+            Arc::new(self.syslog_facility.finish()),
         ];
         self.n = 0;
         RecordBatch::try_new(Arc::clone(&self.schema), arrays)

@@ -154,6 +154,21 @@ pub struct PacketMeta {
     pub quic_version: Option<u32>,
     pub quic_dcid: Option<String>,
     pub banner: Option<String>,
+
+    // Tier-2 protocols
+    pub sctp_verification_tag: Option<u32>,
+    pub sctp_chunk_type: Option<u8>,
+    pub igmp_type: Option<u8>,
+    pub snmp_version: Option<u8>,
+    pub snmp_community: Option<String>,
+    pub modbus_function: Option<u8>,
+    pub modbus_unit_id: Option<u8>,
+    pub sip_method: Option<String>,
+    pub sip_uri: Option<String>,
+    pub smb_dialect: Option<&'static str>,
+    pub tftp_opcode: Option<u8>,
+    pub syslog_severity: Option<u8>,
+    pub syslog_facility: Option<u8>,
 }
 
 impl PacketMeta {

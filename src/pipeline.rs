@@ -89,6 +89,13 @@ fn decode_batch(cfg: &Config, batch: RawBatch, ws: &mut WorkerState) -> Result<D
                         }
                     }
                 }
+            } else if ws.want_app && ws.meta.ip_proto == Some(IP_TCP) {
+                // Best-effort single-packet tier-2 detection for inline columns.
+                if let Some((poff, plen)) = ws.meta.l4_payload {
+                    if let Some(pl) = frame.get(poff..poff + plen) {
+                        app::tier2::parse_tcp(pl, &mut ws.meta);
+                    }
+                }
             }
         } else {
             ws.meta.reset();

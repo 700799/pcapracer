@@ -20,8 +20,35 @@ pub fn dispatch(
         IP_IPIP => tunnel::decode_ipip(frame, start, cfg, meta, 4),
         IP_IPV6 => tunnel::decode_ipip(frame, start, cfg, meta, 6),
         IP_GRE => tunnel::decode_gre(frame, start, end, cfg, meta),
+        IP_IGMP => decode_igmp(frame, start, end, meta),
+        IP_SCTP => decode_sctp(frame, start, end, cfg, meta),
         _ => {}
     }
+}
+
+fn decode_igmp(frame: &[u8], start: usize, end: usize, meta: &mut PacketMeta) {
+    if let Some(seg) = frame.get(start..end) {
+        if !seg.is_empty() {
+            meta.igmp_type = Some(seg[0]);
+        }
+    }
+}
+
+fn decode_sctp(frame: &[u8], start: usize, end: usize, cfg: &Config, meta: &mut PacketMeta) {
+    let seg = match frame.get(start..end) {
+        Some(s) if s.len() >= 12 => s,
+        _ => return,
+    };
+    meta.src_port = Some(u16::from_be_bytes([seg[0], seg[1]]));
+    meta.dst_port = Some(u16::from_be_bytes([seg[2], seg[3]]));
+    meta.sctp_verification_tag = Some(u32::from_be_bytes([seg[4], seg[5], seg[6], seg[7]]));
+    // First chunk type at offset 12.
+    if let Some(&ct) = seg.get(12) {
+        meta.sctp_chunk_type = Some(ct);
+    }
+    let payload_off = start + 12;
+    let payload_len = end.saturating_sub(payload_off);
+    payload_stats(frame, payload_off, payload_len, cfg, meta);
 }
 
 fn decode_tcp(frame: &[u8], start: usize, end: usize, cfg: &Config, meta: &mut PacketMeta) {
