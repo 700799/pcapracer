@@ -40,6 +40,7 @@ impl BatchData {
 /// A batch of decoded record metadata sharing one backing buffer.
 pub struct RawBatch {
     pub idx: u64,
+    pub first_pkt_id: u64,
     pub data: Arc<BatchData>,
     pub recs: Vec<RecMeta>,
 }
@@ -134,9 +135,11 @@ impl Iterator for Reader {
         if recs.is_empty() {
             return None;
         }
+        let first_pkt_id = self.total_records;
         self.total_records += recs.len() as u64;
         let batch = RawBatch {
             idx: self.idx,
+            first_pkt_id,
             data: Arc::clone(&self.data),
             recs,
         };

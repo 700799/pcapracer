@@ -48,6 +48,9 @@ pub struct FlowEvent {
     pub tunneled: bool,
     /// Application payload region within the batch frame, for TCP reassembly (M5).
     pub payload_ref: Option<(u64, u32)>,
+    /// UDP application enrichment carried from stateless worker parsing.
+    pub app_proto: Option<&'static str>,
+    pub dns_qname: Option<String>,
 }
 
 impl FlowEvent {
@@ -133,6 +136,8 @@ impl FlowEvent {
             vlan_id: m.vlan1_id,
             tunneled: m.tunnel_depth > 0,
             payload_ref,
+            app_proto: m.app_proto,
+            dns_qname: m.dns_qname.clone(),
         })
     }
 }

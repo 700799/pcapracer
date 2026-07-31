@@ -784,6 +784,15 @@ impl FlowEngine {
                 .entry(ev.key)
                 .or_insert_with(|| FlowState::new(ev, self.active_threshold));
             st.account(ev);
+            // UDP application enrichment carried on the event (worker-parsed).
+            if let Some(ap) = ev.app_proto {
+                st.enrich.app_protos.insert(ap);
+            }
+            if let Some(q) = &ev.dns_qname {
+                if st.enrich.dns_qnames.len() < 16 && !st.enrich.dns_qnames.iter().any(|x| x == q) {
+                    st.enrich.dns_qnames.push(q.clone());
+                }
+            }
             if do_app {
                 st.feed_app(ev, payload.unwrap(), &cfg)
             } else {
