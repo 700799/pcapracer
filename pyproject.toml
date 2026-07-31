@@ -1,0 +1,63 @@
+[build-system]
+requires = ["maturin>=1.14,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pcapracer"
+description = "Fast PCAP/pcapng feature extraction to Parquet (Rust-powered): packets, flows, DNS, HTTP, TLS with JA3/JA4 fingerprints"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+dynamic = ["version"]
+authors = [{ name = "pcapracer contributors" }]
+keywords = [
+    "pcap",
+    "pcapng",
+    "parquet",
+    "network",
+    "dfir",
+    "threat-hunting",
+    "netflow",
+    "ja3",
+    "ja4",
+    "feature-extraction",
+    "cybersecurity",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.optional-dependencies]
+arrow = ["pyarrow>=14"]
+test = ["pytest>=7", "pyarrow>=14"]
+
+[project.scripts]
+pcapracer = "pcapracer.cli:main"
+
+[project.urls]
+Repository = "https://github.com/700799/pcapracer"
+Issues = "https://github.com/700799/pcapracer/issues"
+Changelog = "https://github.com/700799/pcapracer/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+python-source = "python"
+module-name = "pcapracer._pcapracer"
+features = ["extension-module"]
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

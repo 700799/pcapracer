@@ -1,0 +1,23 @@
+# Rust
+/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+/dist/
+/.venv/
+.pytest_cache/
+
+# maturin develop artifacts
+python/pcapracer/*.so
+python/pcapracer/*.pyd
+
+# bench artifacts
+/bench/*.pcap
+/bench/out/
+
+# editors / OS
+.idea/
+.vscode/
+.DS_Store

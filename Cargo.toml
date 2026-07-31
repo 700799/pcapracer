@@ -1,0 +1,44 @@
+[package]
+name = "pcapracer"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+description = "Fast PCAP/pcapng feature extraction to Parquet: packets, flows, DNS, HTTP, TLS with JA3/JA4"
+repository = "https://github.com/700799/pcapracer"
+readme = "README.md"
+
+[lib]
+name = "_pcapracer"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["abi3-py310"] }
+arrow-array = "59"
+arrow-schema = "59"
+arrow-buffer = "59"
+parquet = { version = "59", default-features = false, features = ["arrow", "snap", "zstd"] }
+pcap-parser = "0.17"
+etherparse = "0.21"
+tls-parser = "0.12"
+x509-parser = "0.18"
+httparse = "1.10"
+crossbeam-channel = "0.5"
+memmap2 = "0.9"
+flate2 = "1.1"
+md-5 = "0.10"
+sha2 = "0.10"
+thiserror = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.bench-dev]
+inherits = "release"
+lto = false
+codegen-units = 16
