@@ -253,13 +253,11 @@ fn parse_extensions(data: &[u8], ch: &mut ClientHelloInfo) {
                     q += 2;
                 }
             }
-            0x000b => {
-                // ec point formats: len(1) + u8 list
-                if !ed.is_empty() {
-                    let l = ed[0] as usize;
-                    for &b in ed.iter().skip(1).take(l) {
-                        ch.ec_point_formats.push(b);
-                    }
+            // ec point formats: len(1) + u8 list
+            0x000b if !ed.is_empty() => {
+                let l = ed[0] as usize;
+                for &b in ed.iter().skip(1).take(l) {
+                    ch.ec_point_formats.push(b);
                 }
             }
             0x000d => {
@@ -270,16 +268,14 @@ fn parse_extensions(data: &[u8], ch: &mut ClientHelloInfo) {
                     q += 2;
                 }
             }
-            0x002b => {
-                // supported versions: len(1) + u16 list
-                if !ed.is_empty() {
-                    let l = ed[0] as usize;
-                    let mut q = 1usize;
-                    while q + 2 <= (1 + l).min(ed.len()) {
-                        ch.supported_versions
-                            .push(u16::from_be_bytes([ed[q], ed[q + 1]]));
-                        q += 2;
-                    }
+            // supported versions: len(1) + u16 list
+            0x002b if !ed.is_empty() => {
+                let l = ed[0] as usize;
+                let mut q = 1usize;
+                while q + 2 <= (1 + l).min(ed.len()) {
+                    ch.supported_versions
+                        .push(u16::from_be_bytes([ed[q], ed[q + 1]]));
+                    q += 2;
                 }
             }
             _ => {}

@@ -165,17 +165,13 @@ fn decode_icmpv4(frame: &[u8], start: usize, end: usize, meta: &mut PacketMeta) 
     meta.icmp_type = Some(ty);
     meta.icmp_code = Some(seg[1]);
     match ty {
-        0 | 8 => {
-            if seg.len() >= 8 {
-                meta.icmp_echo_id = Some(u16::from_be_bytes([seg[4], seg[5]]));
-                meta.icmp_echo_seq = Some(u16::from_be_bytes([seg[6], seg[7]]));
-            }
+        0 | 8 if seg.len() >= 8 => {
+            meta.icmp_echo_id = Some(u16::from_be_bytes([seg[4], seg[5]]));
+            meta.icmp_echo_seq = Some(u16::from_be_bytes([seg[6], seg[7]]));
         }
-        3 => {
-            // destination unreachable; frag-needed carries next-hop MTU in bytes 6..8
-            if seg.len() >= 8 {
-                meta.icmp_mtu = Some(u16::from_be_bytes([seg[6], seg[7]]));
-            }
+        // destination unreachable; frag-needed carries next-hop MTU in bytes 6..8
+        3 if seg.len() >= 8 => {
+            meta.icmp_mtu = Some(u16::from_be_bytes([seg[6], seg[7]]));
         }
         _ => {}
     }
@@ -190,18 +186,14 @@ fn decode_icmpv6(frame: &[u8], start: usize, end: usize, meta: &mut PacketMeta) 
     meta.icmp_type = Some(ty);
     meta.icmp_code = Some(seg[1]);
     match ty {
-        128 | 129 => {
-            if seg.len() >= 8 {
-                meta.icmp_echo_id = Some(u16::from_be_bytes([seg[4], seg[5]]));
-                meta.icmp_echo_seq = Some(u16::from_be_bytes([seg[6], seg[7]]));
-            }
+        128 | 129 if seg.len() >= 8 => {
+            meta.icmp_echo_id = Some(u16::from_be_bytes([seg[4], seg[5]]));
+            meta.icmp_echo_seq = Some(u16::from_be_bytes([seg[6], seg[7]]));
         }
-        2 => {
-            // packet too big: 32-bit MTU in bytes 4..8
-            if seg.len() >= 8 {
-                let mtu = u32::from_be_bytes([seg[4], seg[5], seg[6], seg[7]]);
-                meta.icmp_mtu = u16::try_from(mtu).ok();
-            }
+        // packet too big: 32-bit MTU in bytes 4..8
+        2 if seg.len() >= 8 => {
+            let mtu = u32::from_be_bytes([seg[4], seg[5], seg[6], seg[7]]);
+            meta.icmp_mtu = u16::try_from(mtu).ok();
         }
         _ => {}
     }

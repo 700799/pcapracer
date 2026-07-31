@@ -173,26 +173,23 @@ impl PcapngState {
             }
             let val = &opts[val_start..val_end];
             match code {
-                9 => {
-                    // if_tsresol: 1 byte
-                    if let Some(&r) = val.first() {
-                        iface.ts_den = if r & 0x80 != 0 {
-                            1u64.checked_shl((r & 0x7f) as u32).unwrap_or(1)
-                        } else {
-                            10u64.checked_pow((r & 0x7f) as u32).unwrap_or(1_000_000)
-                        };
-                    }
+                // if_tsresol: 1 byte
+                9 if !val.is_empty() => {
+                    let r = val[0];
+                    iface.ts_den = if r & 0x80 != 0 {
+                        1u64.checked_shl((r & 0x7f) as u32).unwrap_or(1)
+                    } else {
+                        10u64.checked_pow((r & 0x7f) as u32).unwrap_or(1_000_000)
+                    };
                 }
-                14 => {
-                    // if_tsoffset: 8 bytes, seconds
-                    if val.len() == 8 {
-                        let secs = if self.big_endian {
-                            i64::from_be_bytes(val.try_into().unwrap())
-                        } else {
-                            i64::from_le_bytes(val.try_into().unwrap())
-                        };
-                        iface.tsoffset_ns = secs.saturating_mul(1_000_000_000);
-                    }
+                // if_tsoffset: 8 bytes, seconds
+                14 if val.len() == 8 => {
+                    let secs = if self.big_endian {
+                        i64::from_be_bytes(val.try_into().unwrap())
+                    } else {
+                        i64::from_le_bytes(val.try_into().unwrap())
+                    };
+                    iface.tsoffset_ns = secs.saturating_mul(1_000_000_000);
                 }
                 _ => {}
             }

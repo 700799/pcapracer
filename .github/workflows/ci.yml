@@ -36,9 +36,7 @@ jobs:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install tooling
-        run: pip install maturin pytest pyarrow
-      - name: Build extension
-        run: maturin develop --release
+      - name: Build and install (via maturin backend)
+        run: pip install --verbose '.[test]'
       - name: Run tests
         run: pytest tests/ -q
