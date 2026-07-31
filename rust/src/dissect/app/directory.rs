@@ -184,7 +184,6 @@ fn krb_msg_name(t: u8) -> &'static str {
     }
 }
 
-const KRB_TAG_MSG_TYPE: u8 = 2;
 const KRB_TAG_REALM: u8 = 3;
 
 /// Kerberos over TCP is length-prefixed; over UDP it is not.
@@ -222,14 +221,10 @@ pub fn kerberos(payload: &[u8], ctx: &mut Ctx, over_tcp: bool) -> DResult<()> {
             Ok(i) => i,
             Err(_) => continue,
         };
-        match field.tag {
-            KRB_TAG_MSG_TYPE => {}
-            KRB_TAG_REALM => {
-                if ctx.pkt.krb_realm.is_none() {
-                    ctx.pkt.krb_realm = inner.as_str().map(|s| cap(s, 256));
-                }
-            }
-            _ => {}
+        // The realm is recorded from the first field that carries it; later ones in the same
+        // message repeat it.
+        if field.tag == KRB_TAG_REALM && ctx.pkt.krb_realm.is_none() {
+            ctx.pkt.krb_realm = inner.as_str().map(|s| cap(s, 256));
         }
     }
 

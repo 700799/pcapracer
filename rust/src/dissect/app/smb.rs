@@ -81,27 +81,22 @@ fn smb2(body: &[u8], ctx: &mut Ctx) -> DResult<()> {
 
     let rest = c.take_rest();
     match command {
-        3 => {
-            // TREE_CONNECT: a UTF-16LE share path at an offset given in the request body.
-            if rest.len() > 8 {
-                let off = u16::from_le_bytes([rest[4], rest[5]]) as usize;
-                let len = u16::from_le_bytes([rest[6], rest[7]]) as usize;
-                // The offset is measured from the start of the SMB2 header.
-                if off >= 64 && off - 64 + len <= rest.len() {
-                    ctx.pkt.smb_tree =
-                        utf16le(&rest[off - 64..off - 64 + len]).map(|s| cap(s, 512));
-                }
+        // TREE_CONNECT: a UTF-16LE share path at an offset given in the request body.
+        3 if rest.len() > 8 => {
+            let off = u16::from_le_bytes([rest[4], rest[5]]) as usize;
+            let len = u16::from_le_bytes([rest[6], rest[7]]) as usize;
+            // The offset is measured from the start of the SMB2 header.
+            if off >= 64 && off - 64 + len <= rest.len() {
+                ctx.pkt.smb_tree = utf16le(&rest[off - 64..off - 64 + len]).map(|s| cap(s, 512));
             }
         }
-        5 => {
-            // CREATE: the filename lives at a header-relative offset near the end of the body.
-            if rest.len() > 48 {
-                let off = u16::from_le_bytes([rest[44], rest[45]]) as usize;
-                let len = u16::from_le_bytes([rest[46], rest[47]]) as usize;
-                if off >= 64 && off - 64 + len <= rest.len() {
-                    ctx.pkt.smb_filename =
-                        utf16le(&rest[off - 64..off - 64 + len]).map(|s| cap(s, 512));
-                }
+        // CREATE: the filename lives at a header-relative offset near the end of the body.
+        5 if rest.len() > 48 => {
+            let off = u16::from_le_bytes([rest[44], rest[45]]) as usize;
+            let len = u16::from_le_bytes([rest[46], rest[47]]) as usize;
+            if off >= 64 && off - 64 + len <= rest.len() {
+                ctx.pkt.smb_filename =
+                    utf16le(&rest[off - 64..off - 64 + len]).map(|s| cap(s, 512));
             }
         }
         _ => {}

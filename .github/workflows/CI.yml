@@ -24,9 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # No toolchain version here on purpose. rust-toolchain.toml is the single source, and
+      # rustup honours it for every cargo invocation below — so CI and a developer's machine
+      # run the same clippy and agree on what `-D warnings` rejects. Pinning the version in
+      # both places would just create somewhere for them to drift apart.
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings

@@ -13,12 +13,17 @@ maturin develop --release
 cd /tmp && python -m pytest <repo>/tests -v  # run from outside the source tree
 ```
 
-Two of these are easy to get wrong:
+Three of these are easy to get wrong:
 
 - **`--all-targets`** on clippy. Without it, lints inside `#[cfg(test)]` modules are invisible
   locally and fail in CI.
 - **Running pytest from outside the repository.** From inside, `python/pcapracer/` shadows the
   installed package and a packaging mistake stays hidden.
+- **The toolchain version.** `rust-toolchain.toml` pins it, and rustup applies that
+  automatically — so don't reach past it with `cargo +stable`. Clippy gains lints every
+  release, and `-D warnings` turns each new one into a build failure; developing on an older
+  toolchain than CI means finding out from a red pull request instead of from your terminal.
+  To move to a newer Rust, bump the pin and fix the new lints in that same commit.
 
 ## Adding a protocol dissector
 

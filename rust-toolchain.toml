@@ -1,0 +1,8 @@
+# Pinned so `cargo clippy -D warnings` means the same thing locally and in CI.
+#
+# With a floating `stable`, every six-week Rust release can introduce lints that fail an
+# unchanged pull request — and, worse, are invisible to whoever is developing on an older
+# toolchain. Bump this deliberately, and fix the new lints in that same commit.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
