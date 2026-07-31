@@ -1,0 +1,43 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "pcapracer"
+version = "0.1.0"
+description = "Blazing-fast PCAP feature extraction to Parquet, built in Rust, for cyber analysis"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "pcapracer contributors" }]
+keywords = [
+    "pcap", "pcapng", "parquet", "network", "security", "forensics",
+    "dfir", "threat-hunting", "packet-analysis", "netflow",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = ["pyarrow>=14.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "scapy>=2.5", "polars>=0.20"]
+
+[project.urls]
+Homepage = "https://github.com/700799/pcapracer"
+Repository = "https://github.com/700799/pcapracer"
+Issues = "https://github.com/700799/pcapracer/issues"
+
+[project.scripts]
+pcapracer = "pcapracer.cli:main"
+
+[tool.maturin]
+python-source = "python"
+module-name = "pcapracer._pcapracer"
+features = ["pyo3/extension-module"]
