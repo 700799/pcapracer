@@ -323,14 +323,18 @@ mod tests {
     fn proto_table_selects_only_matching_rows() {
         let mut b = WideBuilder::new();
 
-        let mut p1 = Packet::default();
-        p1.packet_id = Some(1);
-        p1.dns_qname = Some("example.com".into());
+        let mut p1 = Packet {
+            packet_id: Some(1),
+            dns_qname: Some("example.com".into()),
+            ..Default::default()
+        };
         b.append(&mut p1);
 
-        let mut p2 = Packet::default();
-        p2.packet_id = Some(2);
-        p2.tcp_seq = Some(42);
+        let mut p2 = Packet {
+            packet_id: Some(2),
+            tcp_seq: Some(42),
+            ..Default::default()
+        };
         b.append(&mut p2);
 
         let batch = b.finish().unwrap();

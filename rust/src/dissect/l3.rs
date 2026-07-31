@@ -210,6 +210,13 @@ fn after_ip(
         return Ok(());
     }
 
+    // Every IP packet belongs to a conversation, so the tuple is established here with no
+    // ports and the transport dissectors overwrite it once they have some. Doing it up front
+    // rather than per-branch is what gives ICMP, ESP, GRE and friends a flow — ping sweeps
+    // and ICMP tunnelling are precisely the things an analyst wants aggregated, and a
+    // port-bearing-protocols-only flow table silently omits them.
+    set_tuple(ctx, src, dst, 0, 0, proto);
+
     match proto {
         IP_TCP => l4::tcp(c, src, dst, ctx),
         IP_UDP | IP_UDPLITE => l4::udp(c, src, dst, proto, ctx),
@@ -223,23 +230,17 @@ fn after_ip(
         IP_ESP => esp(c, ctx),
         IP_OSPF => {
             ctx.layer("ospf");
-            set_tuple(ctx, src, dst, 0, 0, proto);
             Ok(())
         }
         IP_VRRP => {
             ctx.layer("vrrp");
-            set_tuple(ctx, src, dst, 0, 0, proto);
             Ok(())
         }
         IP_PIM => {
             ctx.layer("pim");
-            set_tuple(ctx, src, dst, 0, 0, proto);
             Ok(())
         }
-        _ => {
-            set_tuple(ctx, src, dst, 0, 0, proto);
-            Err(DissectError::Unsupported)
-        }
+        _ => Err(DissectError::Unsupported),
     }
 }
 
@@ -467,6 +468,56 @@ mod tests {
         }
         let (_, r) = dissect(&v);
         assert_eq!(r, Err(DissectError::Malformed));
+    }
+
+    /// Every IP packet must get a flow tuple, not just the port-bearing protocols — an
+    /// ICMP-only flow table would omit ping sweeps and ICMP tunnelling entirely.
+    #[test]
+    fn portless_protocols_still_get_a_flow_tuple() {
+        for proto in [IP_ICMP, IP_IGMP, IP_ESP, IP_OSPF, IP_VRRP] {
+            let mut p = Packet::default();
+            let tuple = {
+                let mut ctx = Ctx::new(&mut p);
+                let _ = crate::dissect::dissect_frame(
+                    &ipv4_hdr(proto, &[0u8; 16]),
+                    LINKTYPE_RAW,
+                    &mut ctx,
+                );
+                ctx.finish();
+                ctx.tuple
+            };
+            let tuple = tuple.unwrap_or_else(|| panic!("proto {proto} produced no flow tuple"));
+            assert_eq!(tuple.proto, proto);
+            assert_eq!(tuple.src_port, 0);
+            assert_eq!(tuple.dst_port, 0);
+        }
+    }
+
+    #[test]
+    fn echo_request_and_reply_normalize_to_one_flow() {
+        let mut request = Packet::default();
+        let a = {
+            let mut ctx = Ctx::new(&mut request);
+            let _ = crate::dissect::dissect_frame(
+                &ipv4_hdr(IP_ICMP, &[8, 0, 0, 0, 0x12, 0x34, 0, 1]),
+                LINKTYPE_RAW,
+                &mut ctx,
+            );
+            ctx.tuple.unwrap()
+        };
+
+        // The reply swaps source and destination.
+        let mut v = ipv4_hdr(IP_ICMP, &[0, 0, 0, 0, 0x12, 0x34, 0, 1]);
+        v[12..16].copy_from_slice(&[10, 0, 0, 2]);
+        v[16..20].copy_from_slice(&[10, 0, 0, 1]);
+        let mut reply = Packet::default();
+        let b = {
+            let mut ctx = Ctx::new(&mut reply);
+            let _ = crate::dissect::dissect_frame(&v, LINKTYPE_RAW, &mut ctx);
+            ctx.tuple.unwrap()
+        };
+
+        assert_eq!(a.normalized().0, b.normalized().0);
     }
 
     #[test]

@@ -140,10 +140,12 @@ mod tests {
     fn round_trips_a_wide_batch() {
         let mut b = WideBuilder::new();
         for i in 0..1000u64 {
-            let mut p = Packet::default();
-            p.packet_id = Some(i);
-            p.ip_src = Some("10.0.0.1".into());
-            p.dns_qname = Some(format!("host{i}.example.com"));
+            let mut p = Packet {
+                packet_id: Some(i),
+                ip_src: Some("10.0.0.1".into()),
+                dns_qname: Some(format!("host{i}.example.com")),
+                ..Default::default()
+            };
             b.append(&mut p);
         }
         let batch = b.finish().unwrap();

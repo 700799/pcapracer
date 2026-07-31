@@ -40,9 +40,10 @@ harness = false
 
 [profile.release]
 opt-level = 3
-# Thin LTO rather than fat: on a dependency tree this size fat LTO turns the final link into
-# a multi-minute single-threaded step for a difference that does not show up in the packet
-# throughput benchmark.
+# Thin LTO rather than fat, and the default 16 codegen units rather than 1. The wide schema
+# expands into one very large translation unit; with codegen-units = 1 the final crate took
+# ~30 minutes to compile, a cost paid again on every CI wheel build. Thin LTO already does
+# the cross-unit inlining that codegen-units = 1 would otherwise buy.
 lto = "thin"
-codegen-units = 1
+codegen-units = 16
 strip = true

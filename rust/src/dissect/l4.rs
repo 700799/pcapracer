@@ -290,7 +290,7 @@ mod tests {
         let mut tcp = vec![0x1f, 0x90, 0x00, 0x50]; // 8080 -> 80
         tcp.extend_from_slice(&[0, 0, 0, 1]); // seq
         tcp.extend_from_slice(&[0, 0, 0, 2]); // ack
-        tcp.push(((doff as u8) << 4) | 0);
+        tcp.push((doff as u8) << 4);
         tcp.push(0x18); // PSH|ACK
         tcp.extend_from_slice(&[0xff, 0xff]); // window
         tcp.extend_from_slice(&[0, 0, 0, 0]); // checksum, urgent

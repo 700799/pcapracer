@@ -681,10 +681,12 @@ mod tests {
         assert_eq!(s.fields().len(), FIELD_NAMES.len());
 
         let mut b = WideBuilder::new();
-        let mut p = Packet::default();
-        p.packet_id = Some(1);
-        p.ip_src = Some("10.0.0.1".into());
-        p.tcp_flag_syn = Some(true);
+        let mut p = Packet {
+            packet_id: Some(1),
+            ip_src: Some("10.0.0.1".into()),
+            tcp_flag_syn: Some(true),
+            ..Default::default()
+        };
         b.append(&mut p);
 
         // `append` drains owned fields so the record can be reused.
@@ -697,9 +699,11 @@ mod tests {
 
     #[test]
     fn clear_resets_every_field() {
-        let mut p = Packet::default();
-        p.dns_qname = Some("example.com".into());
-        p.frame_len = Some(74);
+        let mut p = Packet {
+            dns_qname: Some("example.com".into()),
+            frame_len: Some(74),
+            ..Default::default()
+        };
         p.clear();
         assert!(p.dns_qname.is_none());
         assert!(p.frame_len.is_none());

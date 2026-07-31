@@ -572,8 +572,10 @@ mod tests {
         frame: u64,
         len: u64,
     ) -> Packet {
-        let mut p = Packet::default();
-        p.tcp_flags = Some(flags);
+        let mut p = Packet {
+            tcp_flags: Some(flags),
+            ..Default::default()
+        };
         table.observe(t, &mut p, ts, frame, len);
         p
     }
