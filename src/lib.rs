@@ -3,6 +3,7 @@
 mod config;
 mod decode;
 mod error;
+mod flow;
 mod pipeline;
 mod reader;
 mod reader_ng;

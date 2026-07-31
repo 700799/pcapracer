@@ -1,5 +1,6 @@
 //! Arrow schemas and column builders for each output table.
 
+pub mod flows;
 pub mod packets;
 
 use arrow_array::builder::StringBuilder;
