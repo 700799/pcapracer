@@ -986,7 +986,8 @@ pub(crate) mod tests {
             .iter()
             .map(|(a, b, c)| (*a, *b, c.as_slice()))
             .collect();
-        let path = write_temp("panic.pcap", &crate::reader::tests::build_pcap(1, false, &refs));
+        let pcap = crate::reader::tests::build_pcap(1, false, &refs);
+        let path = write_temp("panic.pcap", &pcap);
 
         let (stats, _, batches) = collect(&path, Config::default());
         assert_eq!(stats.packets, 3);
