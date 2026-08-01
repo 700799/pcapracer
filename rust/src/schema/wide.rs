@@ -209,6 +209,7 @@ packet_schema! {
     proto_stack: str,
     highest_layer: str,
     malformed: bool,
+    panicked: bool,
     truncated: bool,
     tunnel_depth: u8,
 

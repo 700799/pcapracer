@@ -126,6 +126,7 @@ def _warn_about_limits(stats: dict) -> None:
         ("streams_evicted", "segments dissected unreassembled because --max-streams was reached"),
         ("streams_truncated", "TCP streams cut off at --max-stream-bytes"),
         ("fragments_dropped", "IP fragment sets abandoned"),
+        ("dissect_panics", "packets whose dissection panicked (please report — a dissector bug)"),
     ]
     for key, description in warnings:
         count = stats.get(key, 0)

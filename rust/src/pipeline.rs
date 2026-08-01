@@ -20,7 +20,7 @@ use crate::dissect::{app, dissect_frame, Ctx, Tuple};
 use crate::error::{Error, Result};
 use crate::flow::FlowTable;
 use crate::reader::{CaptureReader, RawPacket};
-use crate::reasm::{FragTable, StreamKey, StreamTable};
+use crate::reasm::{FragKey, FragTable, StreamKey, StreamTable};
 use crate::schema::{Packet, WideBuilder};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +81,10 @@ pub struct RunStats {
     pub flows: u64,
     /// Packets whose dissection returned an error at some layer.
     pub malformed: u64,
+    /// Packets whose dissection panicked and was caught at the packet boundary. A non-zero
+    /// count is a dissector bug to file — the run survived, but a field was lost.
+    #[serde(rename = "dissect_panics")]
+    pub panicked: u64,
     /// Packets cut short by the capture's snaplen.
     pub truncated: u64,
     /// Damaged blocks the reader could not parse.
@@ -129,11 +133,60 @@ struct Dissected {
     tuple: Option<Tuple>,
     /// Byte range of the TCP payload within the frame, when dispatch was deferred.
     tcp_payload: Option<(u16, u16)>,
+    /// Fragment metadata, when this packet is an IP fragment, for the reassembly pass.
+    frag: Option<crate::reasm::FragMeta>,
     malformed: bool,
+    /// Dissection panicked and was caught. The packet keeps only its frame-level columns.
+    panicked: bool,
 }
 
 /// Dissect a single packet. Pure — no shared state, which is what lets this run in parallel.
+///
+/// A crafted capture is adversarial input: a future dissector bug (an arithmetic overflow, a
+/// stray index) could panic. Because this function is self-contained, it is the natural unwind
+/// boundary — a caught panic degrades one packet to frame-level columns instead of aborting the
+/// whole run (which, on the rayon path, would abort the process). The catch is per-packet, so it
+/// behaves identically on the serial and parallel paths and does not affect determinism.
 fn dissect_one(o: &Owned, defer_tcp_app: bool) -> Dissected {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dissect_inner(o, defer_tcp_app)
+    })) {
+        Ok(d) => d,
+        Err(_) => {
+            let pkt = Packet {
+                ts: Some(o.ts_ns),
+                ts_epoch_ns: Some(o.ts_ns),
+                frame_len: Some(o.orig_len),
+                cap_len: Some(o.cap_len),
+                iface_id: Some(o.iface_id),
+                truncated: Some(o.truncated),
+                malformed: Some(true),
+                panicked: Some(true),
+                ..Default::default()
+            };
+            Dissected {
+                pkt,
+                // No tuple and no fragment: a packet we could not trust the parse of neither
+                // joins a flow nor feeds reassembly.
+                tuple: None,
+                tcp_payload: None,
+                frag: None,
+                malformed: true,
+                panicked: true,
+            }
+        }
+    }
+}
+
+fn dissect_inner(o: &Owned, defer_tcp_app: bool) -> Dissected {
+    // Test-only hook: a frame beginning 0xDE 0xAD stands in for a future dissector bug that
+    // panics, so the panic-isolation path can be exercised deterministically. Compiled out of
+    // release wheels entirely.
+    #[cfg(test)]
+    if o.data.first() == Some(&0xDE) && o.data.get(1) == Some(&0xAD) {
+        panic!("test-only forced dissection panic");
+    }
+
     // Frame-level columns come from the capture record; everything else the dissectors fill.
     let mut pkt = Packet {
         ts: Some(o.ts_ns),
@@ -145,14 +198,15 @@ fn dissect_one(o: &Owned, defer_tcp_app: bool) -> Dissected {
         ..Default::default()
     };
 
-    let (tuple, malformed) = {
+    let (tuple, frag, malformed) = {
         let mut ctx = Ctx::new(&mut pkt);
         ctx.defer_tcp_app = defer_tcp_app;
         let r = dissect_frame(&o.data, o.linktype, &mut ctx);
         ctx.finish();
-        (ctx.tuple, r.is_err())
+        (ctx.tuple, ctx.frag.take(), r.is_err())
     };
     pkt.malformed = Some(malformed);
+    pkt.panicked = Some(false);
 
     // Locate the TCP payload for the reassembly pass. Header lengths were recorded during
     // dissection, so this needs no second parse.
@@ -166,7 +220,9 @@ fn dissect_one(o: &Owned, defer_tcp_app: bool) -> Dissected {
         pkt,
         tuple,
         tcp_payload,
+        frag,
         malformed,
+        panicked: false,
     }
 }
 
@@ -190,6 +246,7 @@ pub struct Engine {
     pub flows: FlowTable,
     streams: StreamTable,
     frags: FragTable,
+    reassemble: bool,
     pub stats: RunStats,
     next_packet_id: u64,
 }
@@ -200,6 +257,7 @@ impl Engine {
             flows: FlowTable::new(cfg.max_flows),
             streams: StreamTable::new(cfg.max_streams, cfg.max_stream_bytes),
             frags: FragTable::new(cfg.max_frag_sets, cfg.max_frag_bytes),
+            reassemble: cfg.reassemble,
             stats: RunStats {
                 pcapracer_version: env!("CARGO_PKG_VERSION").to_string(),
                 first_ts_ns: i64::MAX,
@@ -224,6 +282,9 @@ impl Engine {
             if d.malformed {
                 self.stats.malformed += 1;
             }
+            if d.panicked {
+                self.stats.panicked += 1;
+            }
             if o.truncated {
                 self.stats.truncated += 1;
             }
@@ -232,7 +293,22 @@ impl Engine {
                 self.stats.last_ts_ns = self.stats.last_ts_ns.max(o.ts_ns);
             }
 
-            if let Some(t) = d.tuple {
+            // IP fragment reassembly (serial, like TCP reassembly). When the datagram
+            // completes, the reassembled bytes are dissected onto the packet that carried the
+            // last fragment, which then joins its flow with the recovered L4/L7 tuple.
+            let frag_tuple = if self.reassemble {
+                d.frag
+                    .and_then(|fm| {
+                        self.frags
+                            .push(fm.key, fm.offset, fm.more_fragments, &fm.payload)
+                            .map(|data| (fm.key, data))
+                    })
+                    .and_then(|(key, data)| self.redissect_datagram(&key, &data, &mut pkt))
+            } else {
+                None
+            };
+
+            if let Some(t) = d.tuple.or(frag_tuple) {
                 self.reassemble_and_dispatch(&t, &mut pkt, o, d.tcp_payload);
                 self.flows
                     .observe(&t, &mut pkt, o.ts_ns, id + 1, o.orig_len as u64);
@@ -307,6 +383,48 @@ impl Engine {
         }
     }
 
+    /// Dissect a reassembled IP datagram and splice its L4/L7 layers onto the packet that
+    /// carried the last fragment. Returns the recovered flow tuple so the packet joins its
+    /// conversation with real ports, not the tuple-less state a bare fragment has.
+    fn redissect_datagram(
+        &mut self,
+        key: &FragKey,
+        data: &[u8],
+        pkt: &mut Packet,
+    ) -> Option<Tuple> {
+        let base_stack = pkt.proto_stack.clone().unwrap_or_default();
+        // Work against the existing packet (it already holds the frame- and IP-level columns);
+        // dispatch only fills the transport and application layers on top.
+        let mut scratch = std::mem::take(pkt);
+        let (extra, tuple) = {
+            let mut ctx = Ctx::new(&mut scratch);
+            let mut c = crate::bytes::Cur::new(data);
+            let _ = crate::dissect::l3::dispatch_ip_proto(
+                &mut c, key.proto, key.src, key.dst, &mut ctx,
+            );
+            (ctx.stack.join(":"), ctx.tuple)
+        };
+        *pkt = scratch;
+        pkt.reassembled = Some(true);
+
+        if !extra.is_empty() {
+            // The first-pass stack ends in the `ip-fragment` marker; replace it with the real
+            // layers now that the datagram is whole.
+            let base = base_stack
+                .strip_suffix(":ip-fragment")
+                .unwrap_or(&base_stack);
+            pkt.proto_stack = Some(if base.is_empty() {
+                extra.clone()
+            } else {
+                format!("{base}:{extra}")
+            });
+            if let Some(last) = extra.rsplit(':').next() {
+                pkt.highest_layer = Some(last.to_string());
+            }
+        }
+        tuple
+    }
+
     fn finalize_stats(&mut self) {
         self.stats.flows = self.flows.len() as u64;
         self.stats.flows_evicted = self.flows.evicted;
@@ -330,6 +448,12 @@ where
     let mut engine = Engine::new(cfg.clone());
     let mut reader = CaptureReader::open(path)?;
     let mut builder = WideBuilder::new();
+
+    // Dissection panics are caught per packet in `dissect_one` and surfaced as a
+    // `dissect_panics` count. Silence the default hook's per-panic backtrace for the duration
+    // of the run so a malformed-heavy capture does not spew thousands of them to stderr; the
+    // count is the signal an analyst needs. Restored on the way out via the guard.
+    let _hook_guard = SilencePanicHook::install();
 
     // Buffers are reused across chunks so a long capture does not churn the allocator.
     let mut chunk: Vec<Owned> = Vec::with_capacity(cfg.batch_size);
@@ -396,6 +520,39 @@ fn dissect_chunk(pool: &rayon::ThreadPool, chunk: &[Owned], defer: bool) -> Vec<
         return chunk.iter().map(|o| dissect_one(o, defer)).collect();
     }
     pool.install(|| chunk.par_iter().map(|o| dissect_one(o, defer)).collect())
+}
+
+type BoxedHook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>;
+
+static HOOK_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static SAVED_HOOK: std::sync::Mutex<Option<BoxedHook>> = std::sync::Mutex::new(None);
+
+/// RAII guard that replaces the global panic hook with a no-op for the duration of a run and
+/// restores it on drop. Refcounted so overlapping runs (e.g. from several Python threads) do
+/// not restore a stale hook while another run is still in flight.
+struct SilencePanicHook;
+
+impl SilencePanicHook {
+    fn install() -> Self {
+        use std::sync::atomic::Ordering;
+        if HOOK_DEPTH.fetch_add(1, Ordering::SeqCst) == 0 {
+            let prev = std::panic::take_hook();
+            *SAVED_HOOK.lock().unwrap() = Some(prev);
+            std::panic::set_hook(Box::new(|_| {}));
+        }
+        SilencePanicHook
+    }
+}
+
+impl Drop for SilencePanicHook {
+    fn drop(&mut self) {
+        use std::sync::atomic::Ordering;
+        if HOOK_DEPTH.fetch_sub(1, Ordering::SeqCst) == 1 {
+            if let Some(prev) = SAVED_HOOK.lock().unwrap().take() {
+                std::panic::set_hook(prev);
+            }
+        }
+    }
 }
 
 fn build_pool(threads: usize) -> Result<rayon::ThreadPool> {
@@ -706,5 +863,153 @@ pub(crate) mod tests {
     fn mode_and_codec_parsing_reject_typos() {
         assert_eq!(Mode::parse("split").unwrap(), Mode::Split);
         assert!(Mode::parse("wode").is_err());
+    }
+
+    /// A UDP/DNS datagram split into an 8-byte first fragment (the UDP header) and a second
+    /// fragment carrying the DNS query.
+    fn fragmented_dns() -> Vec<u8> {
+        let dns = dns_query();
+        let mut datagram = Vec::new();
+        datagram.extend_from_slice(&40000u16.to_be_bytes());
+        datagram.extend_from_slice(&53u16.to_be_bytes());
+        datagram.extend_from_slice(&((8 + dns.len()) as u16).to_be_bytes());
+        datagram.extend_from_slice(&[0, 0]);
+        datagram.extend_from_slice(&dns);
+
+        let frag1 = eth_ip_frag(0x1234, 0, true, 17, &datagram[..8]);
+        let frag2 = eth_ip_frag(0x1234, 1, false, 17, &datagram[8..]);
+        let records: Vec<(u32, u32, Vec<u8>)> = vec![(1, 0, frag1), (2, 0, frag2)];
+        let refs: Vec<(u32, u32, &[u8])> = records
+            .iter()
+            .map(|(a, b, c)| (*a, *b, c.as_slice()))
+            .collect();
+        crate::reader::tests::build_pcap(1, false, &refs)
+    }
+
+    fn eth_ip_frag(ident: u16, offset_units: u16, mf: bool, proto: u8, payload: &[u8]) -> Vec<u8> {
+        let mut v = eth_hdr();
+        let total = 20 + payload.len();
+        let flags_frag = (if mf { 0x2000u16 } else { 0 }) | (offset_units & 0x1fff);
+        v.extend_from_slice(&[
+            0x45,
+            0,
+            (total >> 8) as u8,
+            total as u8,
+            (ident >> 8) as u8,
+            ident as u8,
+            (flags_frag >> 8) as u8,
+            flags_frag as u8,
+            64,
+            proto,
+            0,
+            0,
+            10,
+            0,
+            0,
+            5,
+            93,
+            184,
+            216,
+            34,
+        ]);
+        v.extend_from_slice(payload);
+        v
+    }
+
+    #[test]
+    fn ip_fragments_reassemble_and_recover_l7() {
+        let path = write_temp("frag.pcap", &fragmented_dns());
+        let (stats, _, batches) = collect(&path, Config::default());
+
+        assert_eq!(stats.packets, 2);
+        assert_eq!(stats.fragments_reassembled, 1);
+        assert_eq!(stats.fragments_dropped, 0);
+
+        // The last fragment carries the reassembled datagram's L7 fields.
+        let qnames = col_strings(&batches[0], "dns_qname");
+        assert_eq!(qnames[1].as_deref(), Some("example.com"));
+        let stacks = col_strings(&batches[0], "proto_stack");
+        assert_eq!(stacks[1].as_deref(), Some("eth:ip:udp:dns"));
+
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn ip_fragments_are_not_reassembled_when_disabled() {
+        let path = write_temp("frag-off.pcap", &fragmented_dns());
+        let (stats, _, batches) = collect(
+            &path,
+            Config {
+                reassemble: false,
+                ..Default::default()
+            },
+        );
+        assert_eq!(stats.fragments_reassembled, 0);
+        let qnames = col_strings(&batches[0], "dns_qname");
+        assert_eq!(qnames[1], None, "no L7 without reassembly");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn fragment_reassembly_is_deterministic_across_threads() {
+        let path = write_temp("frag-determinism.pcap", &fragmented_dns());
+        let one = collect(
+            &path,
+            Config {
+                threads: 1,
+                ..Default::default()
+            },
+        );
+        let many = collect(
+            &path,
+            Config {
+                threads: 8,
+                ..Default::default()
+            },
+        );
+        assert_eq!(one.2.len(), many.2.len());
+        for (a, b) in one.2.iter().zip(&many.2) {
+            assert_eq!(a, b, "fragment reassembly diverged across thread counts");
+        }
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn a_dissection_panic_is_caught_and_counted() {
+        // A capture where the middle frame triggers the test-only panic hook; the run must
+        // complete with the other two packets intact and the panic counted, not propagated.
+        let good = eth_ip_udp(40000, 53, &dns_query());
+        let boom = vec![0xDE, 0xAD, 0xBE, 0xEF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let records: Vec<(u32, u32, Vec<u8>)> =
+            vec![(1, 0, good.clone()), (2, 0, boom), (3, 0, good)];
+        let refs: Vec<(u32, u32, &[u8])> = records
+            .iter()
+            .map(|(a, b, c)| (*a, *b, c.as_slice()))
+            .collect();
+        let path = write_temp("panic.pcap", &crate::reader::tests::build_pcap(1, false, &refs));
+
+        let (stats, _, batches) = collect(&path, Config::default());
+        assert_eq!(stats.packets, 3);
+        assert_eq!(stats.panicked, 1);
+
+        let qnames = col_strings(&batches[0], "dns_qname");
+        assert_eq!(qnames[0].as_deref(), Some("example.com"));
+        // The panicked packet kept only frame-level columns.
+        assert_eq!(qnames[1], None);
+        assert_eq!(qnames[2].as_deref(), Some("example.com"));
+
+        let panicked = {
+            let b = &batches[0];
+            let i = b.schema().index_of("panicked").unwrap();
+            let a = b
+                .column(i)
+                .as_any()
+                .downcast_ref::<arrow::array::BooleanArray>()
+                .unwrap();
+            (0..a.len()).map(|i| a.value(i)).collect::<Vec<_>>()
+        };
+        assert_eq!(panicked, vec![false, true, false]);
+
+        std::fs::remove_file(path).ok();
     }
 }

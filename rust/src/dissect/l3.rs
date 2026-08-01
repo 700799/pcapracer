@@ -203,6 +203,24 @@ fn after_ip(
     frag_offset: u16,
     ctx: &mut Ctx,
 ) -> DResult<()> {
+    // Record fragment metadata for the serial reassembly pass. A datagram is fragmented if
+    // MF is set (first/middle fragments) or the offset is non-zero (middle/last). The whole
+    // IP payload at this point is this fragment's contribution to the reassembled datagram.
+    let mf = ctx.pkt.ip_flag_mf.unwrap_or(false);
+    if mf || frag_offset != 0 {
+        ctx.frag = Some(crate::reasm::FragMeta {
+            key: crate::reasm::FragKey {
+                src,
+                dst,
+                id: ctx.pkt.ip_id.unwrap_or(0),
+                proto,
+            },
+            offset: frag_offset,
+            more_fragments: mf,
+            payload: c.rest().to_vec(),
+        });
+    }
+
     // A non-first fragment has no transport header to read — its bytes are the middle of
     // someone else's payload. Reassembly (when enabled) handles these separately.
     if frag_offset != 0 {
@@ -210,6 +228,19 @@ fn after_ip(
         return Ok(());
     }
 
+    dispatch_ip_proto(c, proto, src, dst, ctx)
+}
+
+/// Dispatch the transport layer for a (reassembled or whole) IP payload. Establishes the
+/// flow tuple and runs the matching L4 dissector. Shared by first-pass dissection and the
+/// fragment-reassembly re-dissection path, so the latter produces identical L4/L7 fields.
+pub fn dispatch_ip_proto(
+    c: &mut Cur,
+    proto: u8,
+    src: IpAddr,
+    dst: IpAddr,
+    ctx: &mut Ctx,
+) -> DResult<()> {
     // Every IP packet belongs to a conversation, so the tuple is established here with no
     // ports and the transport dissectors overwrite it once they have some. Doing it up front
     // rather than per-branch is what gives ICMP, ESP, GRE and friends a flow — ping sweeps

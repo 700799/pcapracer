@@ -23,6 +23,7 @@ from scapy.all import (  # noqa: E402
     UDP,
     Ether,
     Raw,
+    fragment,
     wrpcap,
 )
 
@@ -196,6 +197,68 @@ def large_capture(tmp_path_factory) -> str:
             / UDP(sport=40000 + (i % 1000), dport=53)
             / DNS(id=i % 65535, rd=1, qd=DNSQR(qname=f"host{i}.example.com", qtype="A"))
         )
+    wrpcap(str(path), packets)
+    return str(path)
+
+
+@pytest.fixture(scope="session")
+def fragmented_dns_capture(tmp_path_factory) -> str:
+    """A DNS response split across several IP fragments — the answer only appears once the
+    datagram is reassembled."""
+    path = tmp_path_factory.mktemp("captures") / "frag-dns.pcap"
+    datagram = (
+        IP(src="8.8.8.8", dst=CLIENT, id=44)
+        / UDP(sport=53, dport=40000)
+        / DNS(
+            id=0x1234,
+            qr=1,
+            ra=1,
+            qd=DNSQR(qname="www.example.com", qtype="A"),
+            an=DNSRR(rrname="www.example.com", type="A", ttl=300, rdata=SERVER),
+        )
+    )
+    frags = fragment(datagram, fragsize=8)
+    packets = [_eth(src=SERVER_MAC, dst=CLIENT_MAC) / f for f in frags]
+    wrpcap(str(path), packets)
+    return str(path)
+
+
+@pytest.fixture(scope="session")
+def fragmented_http_capture(tmp_path_factory) -> str:
+    """An HTTP response whose headers span several IP fragments."""
+    path = tmp_path_factory.mktemp("captures") / "frag-http.pcap"
+    body = b"HTTP/1.1 200 OK\r\nServer: nginx/1.24.0\r\nHost: frag.example\r\n\r\n"
+    datagram = (
+        IP(src=SERVER, dst=CLIENT, id=55)
+        / TCP(sport=80, dport=50000, flags="PA", seq=5001, ack=1)
+        / Raw(load=body)
+    )
+    frags = fragment(datagram, fragsize=16)
+    packets = [_eth(src=SERVER_MAC, dst=CLIENT_MAC) / f for f in frags]
+    wrpcap(str(path), packets)
+    return str(path)
+
+
+@pytest.fixture(scope="session")
+def fragmented_with_hole_capture(tmp_path_factory) -> str:
+    """A fragmented datagram missing a middle fragment: it must be dropped and counted, never
+    half-parsed into wrong field values."""
+    path = tmp_path_factory.mktemp("captures") / "frag-hole.pcap"
+    datagram = (
+        IP(src="8.8.8.8", dst=CLIENT, id=77)
+        / UDP(sport=53, dport=40000)
+        / DNS(
+            id=0x1234,
+            qr=1,
+            ra=1,
+            qd=DNSQR(qname="www.example.com", qtype="A"),
+            an=DNSRR(rrname="www.example.com", type="A", ttl=300, rdata=SERVER),
+        )
+    )
+    frags = fragment(datagram, fragsize=8)
+    # Drop a middle fragment so the datagram can never complete.
+    del frags[len(frags) // 2]
+    packets = [_eth(src=SERVER_MAC, dst=CLIENT_MAC) / f for f in frags]
     wrpcap(str(path), packets)
     return str(path)
 

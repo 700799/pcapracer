@@ -32,6 +32,17 @@ pub struct FragKey {
     pub proto: u8,
 }
 
+/// Fragment metadata surfaced by L3 dissection for the serial reassembly pass. The payload
+/// is copied out because reassembly happens after the (possibly parallel) dissection phase,
+/// so it cannot borrow the frame buffer.
+#[derive(Debug, Clone)]
+pub struct FragMeta {
+    pub key: FragKey,
+    pub offset: u16,
+    pub more_fragments: bool,
+    pub payload: Vec<u8>,
+}
+
 #[derive(Default)]
 struct FragSet {
     /// (offset, bytes) pieces, kept unsorted until assembly.

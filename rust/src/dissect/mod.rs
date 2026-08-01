@@ -72,6 +72,8 @@ pub struct Ctx<'a> {
     /// When set, TCP payloads are left for the reassembly pass rather than dissected from
     /// this segment alone. UDP is unaffected — it has no reassembly to wait for.
     pub defer_tcp_app: bool,
+    /// Set by L3 when the packet is an IP fragment, for the serial reassembly pass.
+    pub frag: Option<crate::reasm::FragMeta>,
 }
 
 impl<'a> Ctx<'a> {
@@ -84,6 +86,7 @@ impl<'a> Ctx<'a> {
             reassembled: false,
             app_done: false,
             defer_tcp_app: false,
+            frag: None,
         }
     }
 

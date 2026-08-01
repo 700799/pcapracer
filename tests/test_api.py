@@ -141,6 +141,45 @@ def test_without_reassembly_the_split_header_is_missed(segmented_capture):
 
 
 # ---------------------------------------------------------------------------
+# IP fragment reassembly
+# ---------------------------------------------------------------------------
+
+
+def test_ip_fragments_recover_dns_answer(fragmented_dns_capture, tmp_path):
+    t = pcapracer.read_packets(fragmented_dns_capture, reassemble=True)
+    assert nonnull(t, "dns_answer_ips") == ["93.184.216.34"]
+    assert nonnull(t, "dns_qname") == ["www.example.com"]
+    assert True in column(t, "reassembled")
+
+    out = tmp_path / "frag"
+    pcapracer.to_parquet(fragmented_dns_capture, out, reassemble=True)
+    meta = json.loads((out / "_meta.json").read_text())
+    assert meta["stats"]["fragments_reassembled"] >= 1
+
+
+def test_ip_fragments_recover_http_host(fragmented_http_capture):
+    t = pcapracer.read_packets(fragmented_http_capture, reassemble=True)
+    assert nonnull(t, "http_host") == ["frag.example"]
+    assert nonnull(t, "http_server") == ["nginx/1.24.0"]
+
+
+def test_fragments_are_invisible_without_reassembly(fragmented_dns_capture):
+    t = pcapracer.read_packets(fragmented_dns_capture, reassemble=False)
+    assert nonnull(t, "dns_answer_ips") == []
+
+
+def test_fragment_with_a_hole_is_dropped_and_counted(fragmented_with_hole_capture, tmp_path):
+    t = pcapracer.read_packets(fragmented_with_hole_capture, reassemble=True)
+    # A missing middle fragment must never yield a half-parsed answer.
+    assert nonnull(t, "dns_answer_ips") == []
+
+    out = tmp_path / "hole"
+    pcapracer.to_parquet(fragmented_with_hole_capture, out, reassemble=True)
+    meta = json.loads((out / "_meta.json").read_text())
+    assert meta["stats"]["fragments_reassembled"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Determinism
 # ---------------------------------------------------------------------------
 

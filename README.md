@@ -96,8 +96,17 @@ streams by default — because a capture is untrusted input and unbounded buffer
 memory-exhaustion bug waiting to happen. Anything dropped at those limits is counted in
 `_meta.json` and warned about on stderr, never silently discarded.
 
-`reassemble=False` skips it entirely, which is faster and lighter if you only need
-flow-level features.
+IP fragments are reassembled the same way: a UDP or TCP payload split across IPv4/IPv6
+fragments is stitched back together before L7 dissection, so a DNS answer or HTTP header
+spread over several fragments is still recovered — fragmentation is a classic
+analysis-evasion trick, so this closes a real blind spot. Fragment reassembly is bounded
+too (per-datagram byte cap and a cap on concurrent fragment sets); overlapping fragments
+resolve first-copy-wins, and a datagram with a missing fragment is dropped and counted in
+`fragments_dropped` rather than half-parsed. `fragments_reassembled` reports how many
+datagrams were recovered.
+
+`reassemble=False` skips both TCP and IP reassembly entirely, which is faster and lighter
+if you only need flow-level features.
 
 ## Threads
 
@@ -132,7 +141,11 @@ A few deliberate limits, so you know what the null columns mean:
 - **LDAP simple bind** — the DN is recorded, the password is not.
 
 Malformed packets are never fatal. Whatever layers parsed are emitted, with `malformed` set,
-so a damaged capture still yields its intact packets.
+so a damaged capture still yields its intact packets. This holds even for a dissector *bug*:
+each packet is dissected behind a panic boundary, so an unforeseen panic on a crafted packet
+degrades that one row to its frame-level columns (with `panicked` set and counted in
+`dissect_panics`) instead of taking down the run — a capture can never be a
+denial-of-service against the tool.
 
 ## Development
 
