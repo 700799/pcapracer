@@ -37,6 +37,9 @@ jobs:
   python:
     name: Python tests (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
+    # macOS/Windows runners are ~10x the cost of Linux, so PRs only get Ubuntu coverage;
+    # the full OS matrix runs once a change actually lands on main.
+    if: matrix.os == 'ubuntu-latest' || github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +67,8 @@ jobs:
   build-wheels:
     name: Wheels (${{ matrix.platform.target }} on ${{ matrix.platform.os }})
     runs-on: ${{ matrix.platform.os }}
+    # Real release wheels (esp. macOS/Windows) are only needed when actually publishing.
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +99,7 @@ jobs:
   build-sdist:
     name: Source distribution
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v5
       - uses: PyO3/maturin-action@v1
