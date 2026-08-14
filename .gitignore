@@ -1,0 +1,14 @@
+/target
+/dist
+*.parquet
+*.pcap
+*.pcapng
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.so
+*.pyd
+.venv/
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
