@@ -35,15 +35,11 @@ jobs:
       - run: cargo test --lib
 
   python:
-    name: Python tests (${{ matrix.os }}, py${{ matrix.python }})
-    runs-on: ${{ matrix.os }}
-    # macOS/Windows runners are ~10x the cost of Linux, so PRs only get Ubuntu coverage;
-    # the full OS matrix runs once a change actually lands on main.
-    if: matrix.os == 'ubuntu-latest' || github.event_name == 'push'
+    name: Python tests (ubuntu-latest, py${{ matrix.python }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.12"]
     steps:
       - uses: actions/checkout@v5
@@ -59,6 +55,36 @@ jobs:
       - name: Run tests against the installed package
         # Run from a scratch directory so the tests exercise the installed wheel rather
         # than the source tree — this is what catches packaging mistakes.
+        run: |
+          mkdir -p ../scratch
+          cd ../scratch
+          python -m pytest ../pcapracer/tests -v
+
+  python-os-matrix:
+    name: Python tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    # matrix context isn't available in a job-level `if`, so the OS split lives here as a
+    # separate job instead of a condition on the `python` job above. macOS/Windows runners
+    # are ~10x the cost of Linux, so this only runs once a change lands on main (or on a
+    # release tag, which is also a `push` event).
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test]"
+      - name: Run tests against the installed package
         run: |
           mkdir -p ../scratch
           cd ../scratch
@@ -114,7 +140,7 @@ jobs:
   release:
     name: Publish to PyPI
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [rust, python, build-wheels, build-sdist]
+    needs: [rust, python, python-os-matrix, build-wheels, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
