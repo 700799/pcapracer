@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # Deliberately not triggered by push-to-main or pull_request: every commit was
+  # billing Actions minutes with no way to opt out per-push. A `v*` tag is a one-time,
+  # deliberate release action; workflow_dispatch covers on-demand manual runs.
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
