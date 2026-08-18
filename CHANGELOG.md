@@ -18,6 +18,10 @@ Initial release.
   `tls` Parquet tables; snappy (default) or zstd compression.
 - **Engine:** memory-mapped zero-copy reading, multi-threaded decode with an
   ordered collector, bounded memory, no-panic guarantee on malformed input.
+- **Optional anomaly scoring** (`pip install pcapracer[anomaly]`): unsupervised
+  density model (diagonal Gaussian mixture + categorical surprisal, NumPy-only)
+  that ranks the most anomalous rows of any output table and explains why;
+  `pcapracer.score_table` / `rank_anomalies` and a `pcapracer-anomaly` CLI.
 - Zero-dependency wheels (abi3, CPython ≥ 3.10) for Linux/macOS/Windows.
 
 ### Publishing (maintainers)

@@ -24,6 +24,8 @@ __all__ = [
     "extract",
     "extract_packets",
     "extract_flows",
+    "score_table",
+    "rank_anomalies",
     "ALL_TABLES",
 ]
 
@@ -128,3 +130,13 @@ def extract_packets(input, output_dir=".", **kwargs) -> dict:
 def extract_flows(input, output_dir=".", **kwargs) -> dict:
     """Convenience wrapper: extract only the ``flows`` table."""
     return extract(input, output_dir, tables=["flows"], **kwargs)
+
+
+def __getattr__(name):
+    # Lazy, optional import: keeps the core dependency-free (no numpy/pyarrow
+    # needed to `import pcapracer`); `pip install 'pcapracer[anomaly]'` enables it.
+    if name in ("score_table", "rank_anomalies"):
+        from . import anomaly
+
+        return getattr(anomaly, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

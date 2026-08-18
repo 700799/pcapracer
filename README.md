@@ -83,6 +83,47 @@ duckdb.sql("SELECT ja3, count(*) FROM 'out/*.tls.parquet' GROUP BY ja3 ORDER BY 
 Every selected table is always written, even when empty (a schema-valid, zero-row
 Parquet file), so downstream globbing stays simple.
 
+## Anomaly scoring (optional)
+
+Extraction gives you the fields; the optional `anomaly` extra turns them into a
+triage list. It fits a small **unsupervised** density model over the feature
+columns — no labels, no training set — and scores each row by how *improbable* it
+is, with a short reason naming the fields that drove the score. Low density =
+unusual = worth a look.
+
+```bash
+pip install 'pcapracer[anomaly]'      # adds numpy + pyarrow; core stays dependency-free
+```
+
+```python
+import pcapracer
+pcapracer.extract("capture.pcap", "out/", tables=["flows"])
+
+top = pcapracer.rank_anomalies("out/", table="flows", top=10)
+print(top.select(["src_ip", "dst_ip", "dst_port", "anomaly_score", "anomaly_reason"]))
+#  the long-lived, high-volume flow to an odd port floats to the top, e.g.:
+#  10.0.0.5  6.6.6.6  53201   5.66   fwd_bytes, pkt_len_mean, flow_bytes_per_s
+```
+
+Or from the shell:
+
+```bash
+pcapracer-anomaly out/ --table flows --top 20 --out scored.parquet
+```
+
+`score_table(...)` adds three columns to the table: `anomaly_score` (robust
+z-score; ~0 is typical, higher is more anomalous), `anomaly_rank` (1 = most
+anomalous), and `anomaly_reason` (up to three contributing fields). Under the
+hood it auto-selects behavioural features (dropping identifiers and
+high-cardinality text), models numeric columns with a small diagonal Gaussian
+mixture (component count chosen by BIC) and categorical columns by smoothed
+frequency, and scores each row's joint log-density — all in NumPy, no heavyweight
+ML dependency. It is a fast, explainable statistical **baseline** that surfaces
+outliers; it is not a tuned "is-this-malicious" classifier. The idea (an
+unsupervised density model over heterogeneous fields, with per-field
+explanations) is inspired by probabilistic-modeling tools such as
+[mixle](https://github.com/gmboquet/mixle); the implementation here is our own.
+
 ## Protocol coverage
 
 **Link/tunnel:** Ethernet II, 802.1Q + QinQ VLAN, MPLS, Linux SLL/SLL2, Null/Loopback,

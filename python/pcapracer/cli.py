@@ -89,5 +89,72 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def build_anomaly_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="pcapracer-anomaly",
+        description="Unsupervised anomaly scoring over a pcapracer Parquet table.",
+    )
+    p.add_argument("source", help="a .parquet file or an output directory")
+    p.add_argument(
+        "-t",
+        "--table",
+        default="flows",
+        help="table to score when SOURCE is a directory (default: flows)",
+    )
+    p.add_argument("-n", "--top", type=int, default=20, help="rows to show (default: 20)")
+    p.add_argument("--out", help="write the full scored table to this Parquet path")
+    p.add_argument("--max-components", type=int, default=6)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--version", action="version", version=f"pcapracer {__version__}")
+    return p
+
+
+def anomaly_main(argv: list[str] | None = None) -> int:
+    args = build_anomaly_parser().parse_args(argv)
+    try:
+        from .anomaly import score_table
+    except ImportError as e:
+        print(f"pcapracer-anomaly: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        scored = score_table(
+            args.source,
+            table=args.table,
+            max_components=args.max_components,
+            seed=args.seed,
+        )
+    except (OSError, ValueError) as e:
+        print(f"pcapracer-anomaly: error: {e}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        import pyarrow.parquet as pq
+
+        pq.write_table(scored, args.out)
+
+    import pyarrow.compute as pc
+
+    order = pc.sort_indices(scored, sort_keys=[("anomaly_score", "descending")])
+    top = scored.take(order[: min(args.top, scored.num_rows)]).to_pylist()
+    have = set(scored.schema.names)
+
+    def col(row, *names):
+        for nm in names:
+            if nm in have and row.get(nm) is not None:
+                return row[nm]
+        return ""
+
+    print(f"{'rank':>4}  {'score':>7}  {'src':>21}  {'dst':>21}  reason")
+    for row in top:
+        src = f"{col(row,'src_ip')}:{col(row,'src_port')}"
+        dst = f"{col(row,'dst_ip')}:{col(row,'dst_port')}"
+        print(
+            f"{row['anomaly_rank']:>4}  {row['anomaly_score']:>7.2f}  "
+            f"{src:>21}  {dst:>21}  {row['anomaly_reason']}"
+        )
+    return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
