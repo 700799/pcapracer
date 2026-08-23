@@ -89,3 +89,22 @@ def test_thread_flag(mixed_capture, tmp_path, threads):
     out = tmp_path / f"t{threads}"
     assert main([mixed_capture, "-o", str(out), "-j", threads]) == 0
     assert pq.read_table(out / "packets.parquet").num_rows == 11
+
+
+def test_distributions_summary_is_printed(large_capture, tmp_path, capsys):
+    out = tmp_path / "out"
+    assert main([large_capture, "-o", str(out)]) == 0
+
+    captured = capsys.readouterr().out
+    assert "field distributions" in captured
+    assert "packets.frame_len" in captured
+    assert (out / "_distributions.json").exists()
+
+
+def test_no_distributions_flag_skips_fitting(large_capture, tmp_path, capsys):
+    out = tmp_path / "out"
+    assert main([large_capture, "-o", str(out), "--no-distributions"]) == 0
+
+    captured = capsys.readouterr().out
+    assert "field distributions" not in captured
+    assert not (out / "_distributions.json").exists()

@@ -88,6 +88,27 @@ Simplest to query; no joins.
 each protocol found gets its own narrow file (`dns.parquet`, `tls.parquet`, …) joinable on
 `packet_id`. Protocols absent from the capture produce no file at all.
 
+## Field distributions
+
+Every extraction also fits the numeric fields most worth characterizing by shape — packet
+and payload lengths, TTL, TCP window, flow duration, byte counts — against scipy's catalog
+of continuous distributions, ranks them by Kolmogorov-Smirnov statistic, and writes the
+result to `_distributions.json`. The idea (scan a broad distribution catalog, rank
+candidates by fit) is the same one tools like [distfit](https://github.com/erdogant/distfit)
+and [Fitter](https://github.com/cokelaer/fitter) are built around; this is an independent
+implementation against pcapracer's own schema, not a port of either.
+
+```python
+report = pcapracer.to_parquet("capture.pcap", "out/")
+report["distributions"]["packets.payload_entropy"]["best"]
+# {"distribution": "beta", "params": [...], "ks_statistic": 0.014, "ks_pvalue": 0.71}
+```
+
+Pass `fit_distributions=False` (or `--no-distributions` on the CLI) to skip it — it scans
+dozens of candidate distributions per field, so it costs more time than the extraction
+itself on very large captures. `distribution_fields={"packets": [...], "flows": [...]}`
+overrides which columns get fit.
+
 ## Reassembly
 
 TCP streams are reassembled by default, so an HTTP request split across segments still
