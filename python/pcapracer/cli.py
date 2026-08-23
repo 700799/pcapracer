@@ -66,6 +66,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     extract.add_argument("--compression-level", type=int, default=3)
     extract.add_argument("--row-group-rows", type=int, default=DEFAULT_ROW_GROUP_ROWS)
+    extract.add_argument(
+        "--no-distributions",
+        action="store_true",
+        help="skip fitting numeric fields against scipy's distributions (_distributions.json)",
+    )
     extract.add_argument("--json", action="store_true", help="print the run report as JSON")
 
     info = sub.add_parser("info", help="summarise a capture without writing output")
@@ -91,6 +96,7 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         max_flows=args.max_flows,
         max_streams=args.max_streams,
         max_stream_bytes=args.max_stream_bytes,
+        fit_distributions=not args.no_distributions,
     )
     elapsed = time.perf_counter() - start
 
@@ -110,8 +116,20 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         size = os.path.getsize(path) if os.path.exists(path) else 0
         print(f"  {name:<24} {rows:>10,} rows  {_human(size):>9}")
 
+    _print_distributions(report.get("distributions"))
     _warn_about_limits(stats)
     return 0
+
+
+def _print_distributions(dists: dict | None) -> None:
+    if not dists:
+        return
+    print()
+    print("field distributions (best fit by Kolmogorov-Smirnov statistic, lower is better):")
+    for name, fit in sorted(dists.items()):
+        best = fit.get("best")
+        if best:
+            print(f"  {name:<24} {best['distribution']:<16} ks={best['ks_statistic']:.4f}")
 
 
 def _warn_about_limits(stats: dict) -> None:

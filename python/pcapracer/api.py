@@ -11,11 +11,11 @@ import os
 import queue
 import threading
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import pyarrow as pa
 
-from . import _pcapracer
+from . import _pcapracer, distributions
 
 __all__ = [
     "to_parquet",
@@ -65,6 +65,8 @@ def to_parquet(
     max_flows: int = DEFAULT_MAX_FLOWS,
     max_streams: int = DEFAULT_MAX_STREAMS,
     max_stream_bytes: int = DEFAULT_MAX_STREAM_BYTES,
+    fit_distributions: bool = True,
+    distribution_fields: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, Any]:
     """Extract a capture to Parquet files under ``out_dir``.
 
@@ -81,10 +83,19 @@ def to_parquet(
             application field that did not fit in a single segment.
         threads: 0 uses every core. Output is identical at any thread count.
         compression: One of zstd, snappy, lz4, gzip, none.
+        fit_distributions: Also rank numeric fields (packet lengths, TTLs, flow durations,
+            byte counts, ...) against scipy's continuous distributions and write
+            ``_distributions.json``. Scans dozens of candidate distributions per field, so
+            disable it for speed on very large captures if the shape summary is not needed.
+        distribution_fields: Override which columns get fit, as
+            ``{"packets": [...], "flows": [...]}``. Fields absent from this run's schema are
+            skipped rather than erroring. Defaults to
+            :data:`distributions.DEFAULT_PACKET_FIELDS` / :data:`distributions.DEFAULT_FLOW_FIELDS`.
 
     Returns:
-        A report dict with ``stats`` (packet/flow counts and what was dropped) and ``files``
-        (each output file mapped to its row count).
+        A report dict with ``stats`` (packet/flow counts and what was dropped), ``files``
+        (each output file mapped to its row count), and — unless ``fit_distributions`` is
+        false — ``distributions`` (best-fit shape per field).
     """
     path = _check(input_path, mode, compression)
     report = _pcapracer.extract_to_parquet(
@@ -101,7 +112,19 @@ def to_parquet(
         max_streams,
         max_stream_bytes,
     )
-    return json.loads(report)
+    report = json.loads(report)
+
+    if fit_distributions:
+        fields = distribution_fields or {}
+        dist_report = distributions.fit_parquet_dir(
+            out_dir,
+            packet_fields=fields.get("packets", distributions.DEFAULT_PACKET_FIELDS),
+            flow_fields=fields.get("flows", distributions.DEFAULT_FLOW_FIELDS),
+        )
+        (Path(out_dir) / "_distributions.json").write_text(json.dumps(dist_report, indent=2))
+        report["distributions"] = dist_report
+
+    return report
 
 
 def read(
